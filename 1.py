@@ -66,20 +66,34 @@ def _safe_print(text, end="\n"):
         pass
 
 
-def _error_box(message):
+def _box(title, message, color=None):
     try:
+        if color is None:
+            color = BRIGHT_CYAN
         _safe_print("")
         _safe_print(
-            f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
+            f"{PURPLE}┌─ {color}{BOLD}{title}{RESET} "
             f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
         )
-        _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}{message}{RESET}")
+        _safe_print(f"{PURPLE}│{RESET} {color}{message}{RESET}")
         _safe_print(
             f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
         )
         _safe_print("")
     except Exception:
         pass
+
+
+def _error_box(message):
+    _box("Error", message, BRIGHT_RED)
+
+
+def _info_box(message):
+    _box("Info", message, BRIGHT_CYAN)
+
+
+def _warning_box(message):
+    _box("Warning", message, BRIGHT_YELLOW)
 
 
 def _safe_clear():
@@ -196,7 +210,7 @@ def _safe_getpass(prompt):
         return ""
 
 
-class _ColorFormatter(logging.Formatter):
+class _BoxLogHandler(logging.Handler):
     COLORS = {
         "DEBUG": GRAY,
         "INFO": BRIGHT_CYAN,
@@ -205,29 +219,44 @@ class _ColorFormatter(logging.Formatter):
         "CRITICAL": BRIGHT_RED,
     }
 
-    def format(self, record):
+    TITLES = {
+        "DEBUG": "Debug",
+        "INFO": "Info",
+        "WARNING": "Warning",
+        "ERROR": "Error",
+        "CRITICAL": "Critical",
+    }
+
+    def emit(self, record):
         try:
-            original_level = record.levelname
-            color = self.COLORS.get(original_level, GRAY)
-            level = f"{color}{BOLD}[{original_level}]{RESET}"
-            ts = self.formatTime(record, self.datefmt)
-            ts_colored = f"{PURPLE}{ts}{RESET}"
+            level = record.levelname
+            color = self.COLORS.get(level, GRAY)
+            title = self.TITLES.get(level, level)
             msg = record.getMessage()
             if record.exc_info:
                 try:
                     msg = f"{msg}\n{self.formatException(record.exc_info)}"
                 except Exception:
                     pass
-            return f"{ts_colored} {level} {msg}"
-        except Exception:
             try:
-                return str(record.msg)
+                _safe_print("")
+                _safe_print(
+                    f"{PURPLE}┌─ {color}{BOLD}{title}{RESET} "
+                    f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
+                )
+                for line in str(msg).split("\n"):
+                    _safe_print(f"{PURPLE}│{RESET} {color}{line}{RESET}")
+                _safe_print(
+                    f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
+                )
+                _safe_print("")
             except Exception:
-                return ""
+                pass
+        except Exception:
+            pass
 
 
-_handler = logging.StreamHandler()
-_handler.setFormatter(_ColorFormatter(datefmt="%H:%M:%S"))
+_handler = _BoxLogHandler()
 log = logging.getLogger("nuker")
 log.setLevel(logging.INFO)
 log.handlers = [_handler]
@@ -270,43 +299,10 @@ def _check_h2():
         import h2  # noqa: F401
         return True
     except ImportError:
-        try:
-            _safe_print("")
-            _safe_print(
-                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
-                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_RED}Missing dependency: h2{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_YELLOW}Install it with: "
-                f"{TEAL}pip install httpx[http2]{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
-            )
-            _safe_print("")
-        except Exception:
-            pass
+        _error_box("Missing Dependency H2\nInstall It With: pip install httpx[http2]")
         return False
     except Exception as e:
-        try:
-            _safe_print("")
-            _safe_print(
-                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
-                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_RED}h2 import error: "
-                f"{type(e).__name__}{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
-            )
-            _safe_print("")
-        except Exception:
-            pass
+        _error_box(f"H2 Import Error: {type(e).__name__}")
         return False
 
 
@@ -315,43 +311,10 @@ def _check_pwinput():
         import pwinput  # noqa: F401
         return True
     except ImportError:
-        try:
-            _safe_print("")
-            _safe_print(
-                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
-                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_RED}Missing dependency: pwinput{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_YELLOW}Install it with: "
-                f"{TEAL}pip install pwinput{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
-            )
-            _safe_print("")
-        except Exception:
-            pass
+        _error_box("Missing Dependency Pwinput\nInstall It With: pip install pwinput")
         return False
     except Exception as e:
-        try:
-            _safe_print("")
-            _safe_print(
-                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
-                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}│{RESET} {BRIGHT_RED}pwinput import error: "
-                f"{type(e).__name__}{RESET}"
-            )
-            _safe_print(
-                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
-            )
-            _safe_print("")
-        except Exception:
-            pass
+        _error_box(f"Pwinput Import Error: {type(e).__name__}")
         return False
 
 
@@ -525,70 +488,70 @@ class Nuker:
         try:
             _safe_print("")
             _safe_print(
-                f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}VALIDATION{RESET} "
+                f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}Validation{RESET} "
                 f"{PURPLE}───────────────────────────────────────────────┐{RESET}"
             )
 
             if not self.token:
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: REQUIRED{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: Required{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             if not await self.validate_token():
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: INVALID{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: Invalid{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             if not self.user:
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: INVALID{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Token: Invalid{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             _safe_print(
                 f"{PURPLE}│{RESET} {BRIGHT_GREEN}✔ Token: {TEAL}{BOLD}"
-                f"{_safe_get(self.user, 'username', 'UNKNOWN')}"
+                f"{_safe_get(self.user, 'username', 'Unknown')}"
                 f"#{_safe_get(self.user, 'discriminator', '0')}{RESET}"
             )
 
             if not self.guild_id:
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: REQUIRED{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: Required{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             if not await self.validate_guild():
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: NOT FOUND{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: Not Found{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             if not self.guild:
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: NOT FOUND{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Guild: Not Found{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             _safe_print(
                 f"{PURPLE}│{RESET} {BRIGHT_GREEN}✔ Guild: {TEAL}{BOLD}"
-                f"{_safe_get(self.guild, 'name', 'UNKNOWN')}{RESET}"
+                f"{_safe_get(self.guild, 'name', 'Unknown')}{RESET}"
             )
 
             if not await self.validate_permissions():
-                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Permissions: COULD NOT FETCH{RESET}")
+                _safe_print(f"{PURPLE}│{RESET} {BRIGHT_RED}✘ Permissions: Could Not Fetch{RESET}")
                 _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
                 return False
 
             if self.is_owner:
                 _safe_print(
                     f"{PURPLE}│{RESET} {BRIGHT_GREEN}✔ Permissions: "
-                    f"{TEAL}{BOLD}OWNER{RESET}"
+                    f"{TEAL}{BOLD}Owner{RESET}"
                 )
             elif self.is_admin:
                 _safe_print(
                     f"{PURPLE}│{RESET} {BRIGHT_GREEN}✔ Permissions: "
-                    f"{TEAL}{BOLD}ADMINISTRATOR{RESET}"
+                    f"{TEAL}{BOLD}Administrator{RESET}"
                 )
             else:
                 _safe_print(
                     f"{PURPLE}│{RESET} {BRIGHT_YELLOW}⚠ Permissions: "
-                    f"{TEAL}{BOLD}LIMITED (0x{self.permissions:X}){RESET}"
+                    f"{TEAL}{BOLD}Limited (0x{self.permissions:X}){RESET}"
                 )
 
             _safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
@@ -706,13 +669,9 @@ class Nuker:
                     JITTER_MIN, JITTER_MAX
                 )
                 if is_global:
-                    try:
-                        _safe_print(
-                            f"\n{BRIGHT_YELLOW}⚠ GLOBAL RATE LIMIT "
-                            f"— sleeping {sleep_time:.2f}s{RESET}"
-                        )
-                    except Exception:
-                        pass
+                    _warning_box(
+                        f"Global Rate Limit — Sleeping {sleep_time:.2f}s"
+                    )
                 try:
                     await _safe_sleep(sleep_time)
                 except Exception:
@@ -1000,6 +959,9 @@ class WorkerPool:
                                     except Exception:
                                         pass
                                 self.current_workers = new_count
+                                _info_box(
+                                    f"Auto Tune Down — {self.current_workers + (excess if excess > 0 else 0)} → {new_count}"
+                                )
 
                         elif (
                             rl == 0
@@ -1027,7 +989,11 @@ class WorkerPool:
                                     )
                                 except Exception:
                                     pass
+                            old = self.current_workers
                             self.current_workers = new_count
+                            _info_box(
+                                f"Auto Tune Up — {old} → {new_count}"
+                            )
                 except Exception:
                     continue
         except asyncio.CancelledError:
@@ -1160,7 +1126,7 @@ async def delete_channels(nuker):
             return 0
         channels = await nuker.get_channels()
         if not channels:
-            _error_box("No channels found")
+            _error_box("No Channels Found")
             return 0
         categories = [c for c in channels if _safe_get(c, "type") == 4]
         others = [c for c in channels if _safe_get(c, "type") != 4]
@@ -1177,7 +1143,7 @@ async def delete_channels(nuker):
             except Exception:
                 continue
         if count == 0:
-            _error_box("No channels found")
+            _error_box("No Channels Found")
         return count
     except Exception:
         return 0
@@ -1189,7 +1155,7 @@ async def delete_roles(nuker):
             return 0
         roles = await nuker.get_roles()
         if not roles:
-            _error_box("No roles found")
+            _error_box("No Roles Found")
             return 0
         count = 0
         for role in roles:
@@ -1210,7 +1176,7 @@ async def delete_roles(nuker):
             except Exception:
                 continue
         if count == 0:
-            _error_box("No roles found")
+            _error_box("No Roles Found")
         return count
     except Exception:
         return 0
@@ -1242,7 +1208,7 @@ async def ban_members(nuker):
             except Exception:
                 continue
         if count == 0:
-            _error_box("No members found")
+            _error_box("No Members Found")
         return count
     except Exception:
         return 0
@@ -1274,7 +1240,7 @@ async def kick_members(nuker):
             except Exception:
                 continue
         if count == 0:
-            _error_box("No members found")
+            _error_box("No Members Found")
         return count
     except Exception:
         return 0
@@ -1289,7 +1255,7 @@ async def delete_emojis(nuker):
             return 0
         emojis = _safe_json(r)
         if not isinstance(emojis, list) or not emojis:
-            _error_box("No emojis found")
+            _error_box("No Emojis Found")
             return 0
         count = 0
         for e in emojis:
@@ -1317,7 +1283,7 @@ async def delete_stickers(nuker):
             return 0
         stickers = _safe_json(r)
         if not isinstance(stickers, list) or not stickers:
-            _error_box("No stickers found")
+            _error_box("No Stickers Found")
             return 0
         count = 0
         for s in stickers:
@@ -1349,7 +1315,7 @@ async def delete_invites(nuker):
             return 0
         invites = _safe_json(r)
         if not isinstance(invites, list) or not invites:
-            _error_box("No invites found")
+            _error_box("No Invites Found")
             return 0
         count = 0
         for inv in invites:
@@ -1375,7 +1341,7 @@ async def delete_webhooks(nuker):
             return 0
         webhooks = _safe_json(r)
         if not isinstance(webhooks, list) or not webhooks:
-            _error_box("No webhooks found")
+            _error_box("No Webhooks Found")
             return 0
         count = 0
         for w in webhooks:
@@ -1393,15 +1359,15 @@ async def delete_webhooks(nuker):
 
 
 ACTIONS = {
-    "1": ("Delete channels & categories", delete_channels),
-    "2": ("Delete roles", delete_roles),
-    "3": ("Ban all members", ban_members),
-    "4": ("Kick all members", kick_members),
-    "5": ("Delete emojis", delete_emojis),
-    "6": ("Delete stickers", delete_stickers),
-    "7": ("Delete invites", delete_invites),
-    "8": ("Delete webhooks", delete_webhooks),
-    "9": ("RUN EVERYTHING", None),
+    "1": ("Delete Channels & Categories", delete_channels),
+    "2": ("Delete Roles", delete_roles),
+    "3": ("Ban All Members", ban_members),
+    "4": ("Kick All Members", kick_members),
+    "5": ("Delete Emojis", delete_emojis),
+    "6": ("Delete Stickers", delete_stickers),
+    "7": ("Delete Invites", delete_invites),
+    "8": ("Delete Webhooks", delete_webhooks),
+    "9": ("Run Everything", None),
 }
 
 
@@ -1505,7 +1471,7 @@ async def main():
     try:
         _safe_print("")
         _safe_print(
-            f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}CONFIGURATION{RESET} "
+            f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}Configuration{RESET} "
             f"{PURPLE}────────────────────────────────────────────┐{RESET}"
         )
         token = _safe_getpass(
@@ -1535,13 +1501,13 @@ async def main():
             try:
                 _print_actions()
                 choice = _safe_input(
-                    f"  {PURPLE}➜{RESET} {BOLD}Choose an option:{RESET} "
+                    f"  {PURPLE}➜{RESET} {BOLD}Choose An Option:{RESET} "
                 )
             except Exception:
                 return
 
             if choice not in ACTIONS:
-                _error_box("Invalid option")
+                _error_box("Invalid Option")
                 return
 
             stats["start_time"] = time.time()
@@ -1557,11 +1523,11 @@ async def main():
             try:
                 _safe_print("")
                 _safe_print(
-                    f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}QUEUE{RESET} "
+                    f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}Queue{RESET} "
                     f"{PURPLE}─────────────────────────────────────────────────┐{RESET}"
                 )
                 _safe_print(
-                    f"{PURPLE}│{RESET} Total operations queued: {LIME}{BOLD}{total}{RESET}"
+                    f"{PURPLE}│{RESET} Total Operations Queued: {LIME}{BOLD}{total}{RESET}"
                 )
                 _safe_print(
                     f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
@@ -1641,7 +1607,7 @@ async def main():
                 rl = stats["rate_limits"]
 
                 _safe_print(
-                    f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}FINAL RESULTS{RESET} "
+                    f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}Final Results{RESET} "
                     f"{PURPLE}────────────────────────────────────────┐{RESET}"
                 )
                 _safe_print(
@@ -1679,19 +1645,13 @@ def _signal_handler(sig, frame):
     global _interrupted
     try:
         if _interrupted:
-            try:
-                _safe_print(f"\n{BRIGHT_RED}⚠ Force exit.{RESET}")
-            except Exception:
-                pass
+            _error_box("Force Exit")
             try:
                 os._exit(1)
             except Exception:
                 pass
         _interrupted = True
-        try:
-            _safe_print(f"\n{BRIGHT_YELLOW}⚠ Interrupted — shutting down...{RESET}")
-        except Exception:
-            pass
+        _warning_box("Interrupted — Shutting Down...")
         if stop_event is None:
             return
         try:
