@@ -260,17 +260,41 @@ def _check_h2():
         import h2  # noqa: F401
         return True
     except ImportError:
-        _safe_print(
-            f"{BRIGHT_RED}Missing dependency: h2{RESET}\n"
-            f"{BRIGHT_YELLOW}Install it with:{RESET} "
-            f"{TEAL}pip install httpx[http2]{RESET}"
-        )
+        try:
+            _safe_print("")
+            _safe_print(
+                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
+                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_RED}Missing dependency: h2{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_YELLOW}Install it with: "
+                f"{TEAL}pip install httpx[http2]{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
+            )
+            _safe_print("")
+        except Exception:
+            pass
         return False
     except Exception as e:
         try:
+            _safe_print("")
             _safe_print(
-                f"{BRIGHT_RED}h2 import error: {type(e).__name__}{RESET}"
+                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
+                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
             )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_RED}h2 import error: "
+                f"{type(e).__name__}{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
+            )
+            _safe_print("")
         except Exception:
             pass
         return False
