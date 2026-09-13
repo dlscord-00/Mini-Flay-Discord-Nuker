@@ -153,14 +153,6 @@ def SafeDiv(A, B, Default=0.0):
     return A / B
 
 
-def SafeMax(A, B):
-    return A if A > B else B
-
-
-def SafeMin(A, B):
-    return A if A < B else B
-
-
 def SafeInput(Prompt):
     try:
         return input(Prompt).strip()
@@ -195,13 +187,6 @@ def IsMutating(Method):
 def CheckH2():
     if importlib.util.find_spec("h2") is None:
         ErrorBox("Missing Dependency H2\nInstall It With: pip install httpx[http2]")
-        return False
-    return True
-
-
-def CheckPwinput():
-    if importlib.util.find_spec("pwinput") is None:
-        ErrorBox("Missing Dependency Pwinput\nInstall It With: pip install pwinput")
         return False
     return True
 
@@ -302,10 +287,7 @@ class Nuker:
                 return True
 
             R = await self.Request("GET", f"{Base}/guilds/{self.GuildId}/roles")
-            if R is None:
-                return False
-
-            if R.status_code != 200:
+            if R is None or R.status_code != 200:
                 return False
 
             AllRoles = SafeJson(R)
@@ -339,9 +321,7 @@ class Nuker:
                 if not Rid:
                     continue
                 Rperm = SafeInt(SafeGet(Role, "permissions", 0), 0)
-                if Rid == self.GuildId:
-                    Perms |= Rperm
-                elif Rid in MyRoles:
+                if Rid == self.GuildId or Rid in MyRoles:
                     Perms |= Rperm
 
             self.Permissions = Perms
@@ -367,10 +347,11 @@ class Nuker:
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
+        Username = SafeGet(self.User, "username", "Unknown")
+        Discriminator = SafeGet(self.User, "discriminator", "0")
+        DisplayName = f"{Username}#{Discriminator}" if Discriminator != "0" else Username
         SafePrint(
-            f"{Purple}│{Reset} {BrightGreen}✔ Token: {Teal}{Bold}"
-            f"{SafeGet(self.User, 'username', 'Unknown')}"
-            f"#{SafeGet(self.User, 'discriminator', '0')}{Reset}"
+            f"{Purple}│{Reset} {BrightGreen}✔ Token: {Teal}{Bold}{DisplayName}{Reset}"
         )
 
         if not self.GuildId:
@@ -416,6 +397,8 @@ class Nuker:
         try:
             if StopEvent is None or StopEvent.is_set():
                 return None
+            if StatsLock is None:
+                return None
 
             Mutating = IsMutating(Method)
 
@@ -449,8 +432,6 @@ class Nuker:
 
                 if Status == 429:
                     Body = SafeJson(R) or {}
-                    if not isinstance(Body, dict):
-                        Body = {}
                     RetryAfter = SafeFloat(Body.get("retry_after", 1.0), 1.0)
                     Scope = R.headers.get("X-RateLimit-Scope", "")
                     try:
@@ -534,7 +515,7 @@ class Nuker:
             if not R:
                 return
 
-            if R.status_code == 403:
+            if R.status_code in (401, 403):
                 return
 
             if R.status_code != 200:
@@ -639,10 +620,10 @@ class WorkerPool:
                 self.Tasks = LiveTasks
 
                 if Rl > Done * 0.3 and self.CurrentWorkers > MinWorkers:
-                    NewCount = SafeMax(MinWorkers, int(self.CurrentWorkers * 0.8))
+                    NewCount = max(MinWorkers, int(self.CurrentWorkers * 0.8))
                     if NewCount < self.CurrentWorkers:
                         Excess = len(self.Tasks) - NewCount
-                        for _ in range(SafeMax(0, Excess)):
+                        for _ in range(max(0, Excess)):
                             try:
                                 T = self.Tasks.pop()
                                 T.cancel()
@@ -655,9 +636,9 @@ class WorkerPool:
                             LogMsg = f"Auto Tune Down — {Old} → {NewCount}"
 
                 elif Rl == 0 and Done > 20 and self.CurrentWorkers < MaxWorkers:
-                    NewCount = SafeMin(MaxWorkers, self.CurrentWorkers + 5)
+                    NewCount = min(MaxWorkers, self.CurrentWorkers + 5)
                     ToSpawn = NewCount - len(self.Tasks)
-                    for _ in range(SafeMax(0, ToSpawn)):
+                    for _ in range(max(0, ToSpawn)):
                         self.Tasks.append(
                             asyncio.create_task(
                                 self.Worker(Stagger=SafeRandomUniform(0.0, 0.05))
@@ -694,8 +675,8 @@ def FmtBar(Done, Total, Width=30):
         Width = 200
     if Total <= 0:
         return f"{Purple}[{' ' * Width}]{Reset}"
-    Done = SafeMax(0, SafeMin(Done, Total))
-    Filled = SafeMax(0, SafeMin(Width, int(Width * Done / Total)))
+    Done = max(0, min(Done, Total))
+    Filled = max(0, min(Width, int(Width * Done / Total)))
     Pct = SafeDiv(Done, Total, 0)
     Color = BrightRed if Pct < 0.33 else Orange if Pct < 0.66 else BrightGreen
     Bar = f"{Color}{'█' * Filled}{Purple}{'░' * (Width - Filled)}{Reset}"
@@ -723,18 +704,15 @@ async def ProgressReporter(Total):
             Rl = Stats["rate_limits"]
 
         Settled = Done + Already + Failed
-        Delta = SafeMax(0, Settled - LastDone)
-        Dt = SafeMax(0, Now - LastTime)
+        Delta = max(0, Settled - LastDone)
+        Dt = max(0.0, Now - LastTime)
         Rate = SafeDiv(Delta, Dt, 0)
         LastDone = Settled
         LastTime = Now
 
         Bar = FmtBar(Settled, Total)
-        Pct = SafeMax(
-            0.0,
-            SafeMin(100.0, SafeDiv(Settled, Total, 0) * 100 if Total else 0),
-        )
-        Remaining = SafeMax(0, Total - Settled)
+        Pct = max(0.0, min(100.0, SafeDiv(Settled, Total, 0) * 100))
+        Remaining = max(0, Total - Settled)
         Eta = SafeDiv(Remaining, Rate, 0)
 
         Line = (
@@ -966,9 +944,6 @@ async def Main():
     if not CheckH2():
         return
 
-    if not CheckPwinput():
-        return
-
     StatsLock = asyncio.Lock()
     StopEvent = asyncio.Event()
 
@@ -1096,7 +1071,7 @@ def SignalHandler(Sig, Frame):
 def RunMain():
     try:
         asyncio.get_running_loop()
-        SafePrint(f"{BrightRed}Error: Cannot Run Inside An Existing Event Loop.{Reset}")
+        ErrorBox("Cannot Run Inside An Existing Event Loop")
         return 1
     except RuntimeError:
         pass
