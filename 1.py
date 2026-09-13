@@ -186,6 +186,16 @@ def _safe_input(prompt):
         return ""
 
 
+def _safe_getpass(prompt):
+    try:
+        import pwinput
+        return pwinput.pwinput(prompt=prompt, mask="*").strip()
+    except (EOFError, KeyboardInterrupt, UnicodeDecodeError):
+        return ""
+    except Exception:
+        return ""
+
+
 class _ColorFormatter(logging.Formatter):
     COLORS = {
         "DEBUG": GRAY,
@@ -289,6 +299,51 @@ def _check_h2():
             )
             _safe_print(
                 f"{PURPLE}│{RESET} {BRIGHT_RED}h2 import error: "
+                f"{type(e).__name__}{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
+            )
+            _safe_print("")
+        except Exception:
+            pass
+        return False
+
+
+def _check_pwinput():
+    try:
+        import pwinput  # noqa: F401
+        return True
+    except ImportError:
+        try:
+            _safe_print("")
+            _safe_print(
+                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
+                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_RED}Missing dependency: pwinput{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_YELLOW}Install it with: "
+                f"{TEAL}pip install pwinput{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}"
+            )
+            _safe_print("")
+        except Exception:
+            pass
+        return False
+    except Exception as e:
+        try:
+            _safe_print("")
+            _safe_print(
+                f"{PURPLE}┌─ {BRIGHT_RED}{BOLD}ERROR{RESET} "
+                f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
+            )
+            _safe_print(
+                f"{PURPLE}│{RESET} {BRIGHT_RED}pwinput import error: "
                 f"{type(e).__name__}{RESET}"
             )
             _safe_print(
@@ -1412,6 +1467,12 @@ async def main():
         return
 
     try:
+        if not _check_pwinput():
+            return
+    except Exception:
+        return
+
+    try:
         stats_lock = asyncio.Lock()
         stop_event = asyncio.Event()
     except Exception:
@@ -1447,7 +1508,7 @@ async def main():
             f"{PURPLE}┌─ {BRIGHT_MAGENTA}{BOLD}CONFIGURATION{RESET} "
             f"{PURPLE}────────────────────────────────────────────┐{RESET}"
         )
-        token = _safe_input(
+        token = _safe_getpass(
             f"{PURPLE}│{RESET} {TEAL}Token{RESET}  {PURPLE}➜{RESET} "
         )
         guild_id = _safe_input(
