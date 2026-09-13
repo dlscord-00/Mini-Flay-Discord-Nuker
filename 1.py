@@ -27,12 +27,12 @@ LIME = "\033[38;5;154m"
 BASE = "https://discord.com/api/v10"
 MAX_RETRIES = 5
 INITIAL_WORKERS = 50
-MIN_WORKERS = 10
-MAX_WORKERS = 100
-JITTER_MIN = 0.01
-JITTER_MAX = 0.1
-BACKOFF_BASE = 0.1
-BACKOFF_MAX = 3.0
+MIN_WORKERS = 25
+MAX_WORKERS = 50
+JITTER_MIN = 0.001
+JITTER_MAX = 0.005
+BACKOFF_BASE = 0.05
+BACKOFF_MAX = 1.5
 
 stats = {
     "done": 0,
@@ -114,7 +114,7 @@ def _safe_random_uniform(a, b):
             a, b = b, a
         return random.uniform(a, b)
     except Exception:
-        return 0.1
+        return 0.001
 
 
 def _safe_int(value, default=0):
@@ -296,9 +296,15 @@ class Nuker:
 
     async def __aenter__(self):
         self.queue = asyncio.Queue()
-        timeout = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)
+        limits = httpx.Limits(
+            max_connections=200,
+            max_keepalive_connections=100,
+            keepalive_expiry=60.0,
+        )
+        timeout = httpx.Timeout(connect=3.0, read=10.0, write=10.0, pool=3.0)
         self.client = httpx.AsyncClient(
             timeout=timeout,
+            limits=limits,
             headers=self.headers,
             http2=True,
             follow_redirects=True,
@@ -641,12 +647,6 @@ class Nuker:
             if len(batch) < 1000:
                 return
 
-    async def get_members(self):
-        members = []
-        async for m in self.iter_members():
-            members.append(m)
-        return members
-
 
 class WorkerPool:
     def __init__(self, nuker):
@@ -701,7 +701,7 @@ class WorkerPool:
 
     async def start(self):
         for _ in range(self.current_workers):
-            stagger = _safe_random_uniform(0.0, 0.5)
+            stagger = _safe_random_uniform(0.0, 0.05)
             loop = asyncio.get_running_loop()
             self.tasks.append(loop.create_task(self._worker(stagger=stagger)))
 
@@ -729,7 +729,7 @@ class WorkerPool:
 
                 if rl > done * 0.3 and self.current_workers > MIN_WORKERS:
                     new_count = _safe_max(
-                        MIN_WORKERS, int(self.current_workers * 0.7)
+                        MIN_WORKERS, int(self.current_workers * 0.8)
                     )
                     if new_count < self.current_workers:
                         excess = len(self.tasks) - new_count
@@ -749,7 +749,7 @@ class WorkerPool:
                     and self.current_workers < MAX_WORKERS
                 ):
                     new_count = _safe_min(
-                        MAX_WORKERS, self.current_workers + 10
+                        MAX_WORKERS, self.current_workers + 5
                     )
                     to_spawn = new_count - len(self.tasks)
                     for _ in range(_safe_max(0, to_spawn)):
@@ -757,7 +757,7 @@ class WorkerPool:
                         self.tasks.append(
                             loop.create_task(
                                 self._worker(
-                                    stagger=_safe_random_uniform(0.0, 0.3)
+                                    stagger=_safe_random_uniform(0.0, 0.05)
                                 )
                             )
                         )
@@ -809,7 +809,7 @@ async def progress_reporter(total):
             return
 
         try:
-            await _safe_sleep(0.5)
+            await _safe_sleep(0.25)
         except asyncio.CancelledError:
             return
 
