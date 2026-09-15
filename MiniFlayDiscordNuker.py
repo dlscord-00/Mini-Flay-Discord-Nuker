@@ -904,27 +904,17 @@ async def BanMembers(NukerInstance: Nuker) -> int:
     if not NukerInstance.HasPerm(PermBanMembers):
         ErrorBox("Missing Ban Members Permission")
         return 0
-    RealMembers: List[Dict[str, Any]] = []
-    async for Member in NukerInstance.IterMembers():
-        User = SafeGet(Member, "user", {})
-        if SafeGet(User, "bot", False):
-            continue
-        UserId = SafeGet(User, "id")
-        if not UserId:
-            continue
-        RealMembers.append(Member)
-    if not RealMembers:
-        ErrorBox("No Members Found")
-        return 0
     Count = 0
     Skipped = 0
-    for Member in RealMembers:
+    Found = 0
+    async for Member in NukerInstance.IterMembers():
+        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
+        if not UserId:
+            continue
+        Found += 1
         Ok, Reason = NukerInstance.CanManageMember(Member)
         if not Ok:
             Skipped += 1
-            continue
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId:
             continue
         NukerInstance.Queue.put_nowait(
             (
@@ -934,6 +924,9 @@ async def BanMembers(NukerInstance: Nuker) -> int:
             )
         )
         Count += 1
+    if Found == 0:
+        ErrorBox("No Members Found")
+        return 0
     if Skipped:
         WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
     if Count == 0:
@@ -945,32 +938,25 @@ async def KickMembers(NukerInstance: Nuker) -> int:
     if not NukerInstance.HasPerm(PermKickMembers):
         ErrorBox("Missing Kick Members Permission")
         return 0
-    RealMembers: List[Dict[str, Any]] = []
-    async for Member in NukerInstance.IterMembers():
-        User = SafeGet(Member, "user", {})
-        if SafeGet(User, "bot", False):
-            continue
-        UserId = SafeGet(User, "id")
-        if not UserId:
-            continue
-        RealMembers.append(Member)
-    if not RealMembers:
-        ErrorBox("No Members Found")
-        return 0
     Count = 0
     Skipped = 0
-    for Member in RealMembers:
+    Found = 0
+    async for Member in NukerInstance.IterMembers():
+        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
+        if not UserId:
+            continue
+        Found += 1
         Ok, Reason = NukerInstance.CanManageMember(Member)
         if not Ok:
             Skipped += 1
-            continue
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId:
             continue
         NukerInstance.Queue.put_nowait(
             ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/members/{UserId}", None)
         )
         Count += 1
+    if Found == 0:
+        ErrorBox("No Members Found")
+        return 0
     if Skipped:
         WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
     if Count == 0:
