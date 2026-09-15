@@ -522,7 +522,7 @@ class Nuker:
                 f"{Gray}{', '.join(Missing)}{Reset}"
             )
         if self.IsOwner:
-            HierLabel = "Owner (Infinity)"
+            HierLabel = "Owner"
         else:
             HierLabel = f"Position {self.UserHighestRolePosition}"
         SafePrint(
@@ -871,12 +871,20 @@ async def DeleteRoles(NukerInstance: Nuker) -> int:
     if not Roles:
         ErrorBox("No Roles Found")
         return 0
-    Count = 0
-    Skipped = 0
+    RealRoles: List[str] = []
     for Role in Roles:
         RoleId = SafeGet(Role, "id")
         if not RoleId or RoleId == NukerInstance.GuildId:
             continue
+        if SafeGet(Role, "managed", False):
+            continue
+        RealRoles.append(RoleId)
+    if not RealRoles:
+        ErrorBox("No Roles Found")
+        return 0
+    Count = 0
+    Skipped = 0
+    for RoleId in RealRoles:
         Ok, Reason = NukerInstance.CanManageRole(RoleId)
         if not Ok:
             Skipped += 1
@@ -896,9 +904,21 @@ async def BanMembers(NukerInstance: Nuker) -> int:
     if not NukerInstance.HasPerm(PermBanMembers):
         ErrorBox("Missing Ban Members Permission")
         return 0
+    RealMembers: List[Dict[str, Any]] = []
+    async for Member in NukerInstance.IterMembers():
+        User = SafeGet(Member, "user", {})
+        if SafeGet(User, "bot", False):
+            continue
+        UserId = SafeGet(User, "id")
+        if not UserId:
+            continue
+        RealMembers.append(Member)
+    if not RealMembers:
+        ErrorBox("No Members Found")
+        return 0
     Count = 0
     Skipped = 0
-    async for Member in NukerInstance.IterMembers():
+    for Member in RealMembers:
         Ok, Reason = NukerInstance.CanManageMember(Member)
         if not Ok:
             Skipped += 1
@@ -925,9 +945,21 @@ async def KickMembers(NukerInstance: Nuker) -> int:
     if not NukerInstance.HasPerm(PermKickMembers):
         ErrorBox("Missing Kick Members Permission")
         return 0
+    RealMembers: List[Dict[str, Any]] = []
+    async for Member in NukerInstance.IterMembers():
+        User = SafeGet(Member, "user", {})
+        if SafeGet(User, "bot", False):
+            continue
+        UserId = SafeGet(User, "id")
+        if not UserId:
+            continue
+        RealMembers.append(Member)
+    if not RealMembers:
+        ErrorBox("No Members Found")
+        return 0
     Count = 0
     Skipped = 0
-    async for Member in NukerInstance.IterMembers():
+    for Member in RealMembers:
         Ok, Reason = NukerInstance.CanManageMember(Member)
         if not Ok:
             Skipped += 1
