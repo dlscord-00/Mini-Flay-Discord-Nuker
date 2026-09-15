@@ -63,8 +63,6 @@ AutotuneDownFactor = 0.75
 AutotuneRateLimitThreshold = 0.25
 AutotuneSuccessThreshold = 15
 
-PermKickMembers = 1 << 1
-PermBanMembers = 1 << 2
 PermAdministrator = 1 << 3
 PermManageChannels = 1 << 4
 PermManageGuild = 1 << 5
