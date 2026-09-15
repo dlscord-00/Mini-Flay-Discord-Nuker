@@ -1075,8 +1075,8 @@ async def RunAction(Nuker: GuildNuker, Choice: str) -> int:
 def PrintActionMenu() -> None:
     SafePrint("")
     SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Discord Nuker{Reset} "
-        f"{Purple}────────────────────────────────────────────────┐{Reset}"
+        f"{Purple}┌─ {BrightMagenta}{Bold}Mini Flay - Discord Nuker{Reset} "
+        f"{Purple}────────────────────────────────────┐{Reset}"
     )
     SafePrint(f"{Purple}│{Reset} {Teal}Available Actions{Reset}")
     SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
@@ -1112,9 +1112,11 @@ async def Main() -> None:
     SafeClear()
     SafePrint("")
     SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Configuration{Reset} "
-        f"{Purple}────────────────────────────────────────────┐{Reset}"
+        f"{Purple}┌─ {BrightMagenta}{Bold}Mini Flay - Discord Nuker{Reset} "
+        f"{Purple}────────────────────────────────────┐{Reset}"
     )
+    SafePrint(f"{Purple}│{Reset} {Teal}Configuration{Reset}")
+    SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
     Token = SafeGetpass(f"{Purple}│{Reset} {Teal}Token{Reset}  {Purple}➜{Reset} ")
     GuildId = SafeInput(f"{Purple}│{Reset} {Teal}Guild{Reset}  {Purple}➜{Reset} ")
     SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
