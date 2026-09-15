@@ -996,13 +996,20 @@ def ConfirmDestructive(Choice: str, Total: int) -> bool:
     if Total <= 0:
         return False
     if Choice == "7":
-        Prompt = (
-            f"{BrightRed}{Bold}Confirm Run Everything "
-            f"({Total} operations)? [y/N]:{Reset} "
+        Message = (
+            f"Confirm Run Everything ({Total} operations)?\n"
+            f"Type y to proceed, N to cancel."
         )
+        Box("Confirm", Message, BrightRed)
     else:
-        Prompt = f"{BrightYellow}Confirm {Total} operations? [y/N]:{Reset} "
-    Answer = SafeInput(Prompt).lower()
+        Message = (
+            f"Confirm {Total} operations?\n"
+            f"Type y to proceed, N to cancel."
+        )
+        Box("Confirm", Message, BrightYellow)
+    Answer = SafeInput(
+        f"{Purple}│{Reset} {Teal}Confirm{Reset}  {Purple}➜{Reset} "
+    ).lower()
     return Answer in ("y", "yes")
 
 
@@ -1040,7 +1047,12 @@ async def Main() -> None:
             return
 
         PrintActionMenu()
-        Choice = SafeInput(f"  {Purple}➜{Reset} {Bold}Choose an option:{Reset} ")
+        SafePrint(
+            f"{Purple}┌─ {BrightMagenta}{Bold}Select{Reset} "
+            f"{Purple}──────────────────────────────────────────────────┐{Reset}"
+        )
+        Choice = SafeInput(f"{Purple}│{Reset} {Teal}Option{Reset}  {Purple}➜{Reset} ")
+        SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
         if Choice not in Actions:
             ErrorBox("Invalid option")
             return
