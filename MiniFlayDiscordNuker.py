@@ -8,14 +8,13 @@ import signal
 import sys
 import time
 from collections import deque
-from typing import Any, AsyncIterator, Callable, Deque, Dict, List, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 import httpx
 
 Reset = "\033[0m"
 Bold = "\033[1m"
 Gray = "\033[90m"
-White = "\033[37m"
 BrightRed = "\033[91m"
 BrightGreen = "\033[92m"
 BrightYellow = "\033[93m"
@@ -52,8 +51,6 @@ ProgressInterval = 0.35
 AutotuneInterval = 1.2
 AutotuneLogCooldown = 8.0
 
-MemberPageSize = 1000
-MaxConsecutiveMemberErrors = 3
 GlobalRateLimitCap = 90.0
 QueueGetTimeout = 1.0
 WorkerStaggerMax = 0.04
@@ -270,7 +267,6 @@ class GuildNuker:
         self.UserRoleIds: set = set()
         self.RolePositions: Dict[str, int] = {}
         self.RoleCache: Dict[str, Dict[str, Any]] = {}
-        self.MemberHighestCache: Dict[str, int] = {}
 
     async def __aenter__(self) -> "GuildNuker":
         self.Queue = asyncio.Queue()
@@ -621,46 +617,6 @@ class GuildNuker:
                 return Data
         return []
 
-    async def IterMembers(self) -> AsyncIterator[Dict[str, Any]]:
-        After = "0"
-        ConsecutiveErrors = 0
-        while True:
-            if StopEvent is None or StopEvent.is_set():
-                return
-            Response = await self.Request(
-                "GET",
-                f"{ApiBase}/guilds/{self.GuildId}/members"
-                f"?limit={MemberPageSize}&after={After}",
-            )
-            if not Response:
-                return
-            if Response.status_code in (401, 403):
-                return
-            if Response.status_code != 200:
-                ConsecutiveErrors += 1
-                if ConsecutiveErrors >= MaxConsecutiveMemberErrors:
-                    return
-                await SafeSleep(ComputeBackoff(ConsecutiveErrors))
-                continue
-
-            ConsecutiveErrors = 0
-            Batch = SafeJson(Response)
-            if not isinstance(Batch, list) or not Batch:
-                return
-
-            for Member in Batch:
-                if isinstance(Member, dict):
-                    self.CacheMemberPosition(Member)
-                    yield Member
-
-            try:
-                After = Batch[-1]["user"]["id"]
-            except (KeyError, TypeError, IndexError):
-                return
-
-            if len(Batch) < MemberPageSize:
-                return
-
     def HasPerm(self, Flag: int) -> bool:
         if self.Permissions & PermAdministrator:
             return True
@@ -691,35 +647,6 @@ class GuildNuker:
                 f"Role position {TargetPos} >= user position {self.UserHighestRolePosition}"
             )
         return True, ""
-
-    def GetMemberHighestPosition(self, Member: Dict[str, Any]) -> int:
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if UserId == self.GuildOwnerId:
-            return 1 << 30
-        Roles = SafeGet(Member, "roles", []) or []
-        return max((self.RolePositions.get(Rid, 0) for Rid in Roles), default=0)
-
-    def CanManageMember(self, Member: Dict[str, Any]) -> Tuple[bool, str]:
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId:
-            return False, "Missing user ID"
-        if UserId == self.GuildOwnerId:
-            return False, "Target is guild owner"
-        if UserId == SafeGet(self.User, "id"):
-            return False, "Cannot target self"
-        if self.IsGuildOwner():
-            return True, ""
-        TargetPos = self.GetMemberHighestPosition(Member)
-        if TargetPos >= self.UserHighestRolePosition:
-            return False, (
-                f"Member position {TargetPos} >= user position {self.UserHighestRolePosition}"
-            )
-        return True, ""
-
-    def CacheMemberPosition(self, Member: Dict[str, Any]) -> None:
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if UserId:
-            self.MemberHighestCache[UserId] = self.GetMemberHighestPosition(Member)
 
 
 class WorkerPool:
