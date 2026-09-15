@@ -507,8 +507,6 @@ class Nuker:
             ("Manage Guild", PermManageGuild),
             ("Manage Webhooks", PermManageWebhooks),
             ("Manage Expressions", PermManageGuildExpressions),
-            ("Ban Members", PermBanMembers),
-            ("Kick Members", PermKickMembers),
         ]
         Granted = [Name for Name, Flag in Checks if self.HasPerm(Flag)]
         Missing = [Name for Name, Flag in Checks if not self.HasPerm(Flag)]
@@ -900,70 +898,6 @@ async def DeleteRoles(NukerInstance: Nuker) -> int:
     return Count
 
 
-async def BanMembers(NukerInstance: Nuker) -> int:
-    if not NukerInstance.HasPerm(PermBanMembers):
-        ErrorBox("Missing Ban Members Permission")
-        return 0
-    Count = 0
-    Skipped = 0
-    Found = 0
-    async for Member in NukerInstance.IterMembers():
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId:
-            continue
-        Found += 1
-        Ok, Reason = NukerInstance.CanManageMember(Member)
-        if not Ok:
-            Skipped += 1
-            continue
-        NukerInstance.Queue.put_nowait(
-            (
-                "PUT",
-                f"{ApiBase}/guilds/{NukerInstance.GuildId}/bans/{UserId}",
-                {"delete_message_seconds": 0},
-            )
-        )
-        Count += 1
-    if Found == 0:
-        ErrorBox("No Members Found")
-        return 0
-    if Skipped:
-        WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
-    if Count == 0:
-        ErrorBox("No Eligible Members Found")
-    return Count
-
-
-async def KickMembers(NukerInstance: Nuker) -> int:
-    if not NukerInstance.HasPerm(PermKickMembers):
-        ErrorBox("Missing Kick Members Permission")
-        return 0
-    Count = 0
-    Skipped = 0
-    Found = 0
-    async for Member in NukerInstance.IterMembers():
-        UserId = SafeGet(SafeGet(Member, "user", {}), "id")
-        if not UserId:
-            continue
-        Found += 1
-        Ok, Reason = NukerInstance.CanManageMember(Member)
-        if not Ok:
-            Skipped += 1
-            continue
-        NukerInstance.Queue.put_nowait(
-            ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/members/{UserId}", None)
-        )
-        Count += 1
-    if Found == 0:
-        ErrorBox("No Members Found")
-        return 0
-    if Skipped:
-        WarningBox(f"Skipped {Skipped} Members (Hierarchy)")
-    if Count == 0:
-        ErrorBox("No Eligible Members Found")
-    return Count
-
-
 async def DeleteEmojis(NukerInstance: Nuker) -> int:
     if not NukerInstance.HasPerm(PermManageGuildExpressions):
         ErrorBox("Missing Manage Expressions Permission")
@@ -1055,20 +989,18 @@ async def DeleteWebhooks(NukerInstance: Nuker) -> int:
 Actions: Dict[str, Tuple[str, Optional[Callable]]] = {
     "1": ("Delete Channels & Categories", DeleteChannels),
     "2": ("Delete Roles", DeleteRoles),
-    "3": ("Ban All Members", BanMembers),
-    "4": ("Kick All Members", KickMembers),
-    "5": ("Delete Emojis", DeleteEmojis),
-    "6": ("Delete Stickers", DeleteStickers),
-    "7": ("Delete Invites", DeleteInvites),
-    "8": ("Delete Webhooks", DeleteWebhooks),
-    "9": ("Run Everything", None),
+    "3": ("Delete Emojis", DeleteEmojis),
+    "4": ("Delete Stickers", DeleteStickers),
+    "5": ("Delete Invites", DeleteInvites),
+    "6": ("Delete Webhooks", DeleteWebhooks),
+    "7": ("Run Everything", None),
 }
 
 
 async def RunAction(NukerInstance: Nuker, Choice: str) -> int:
-    if Choice == "9":
+    if Choice == "7":
         Total = 0
-        for Key in ["1", "2", "5", "6", "7", "8", "3"]:
+        for Key in ["1", "2", "3", "4", "5", "6"]:
             _, Function = Actions[Key]
             Total += await Function(NukerInstance)
         return Total
@@ -1086,7 +1018,7 @@ def PrintActions() -> None:
     SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
     for Key in sorted(Actions.keys(), key=int):
         Name, _ = Actions[Key]
-        if Key == "9":
+        if Key == "7":
             SafePrint(f"{Purple}│{Reset} {BrightRed}{Bold}[{Key}] {Name}{Reset}")
         else:
             SafePrint(f"{Purple}│{Reset} {Lime}[{Key}]{Reset} {White}{Name}{Reset}")
