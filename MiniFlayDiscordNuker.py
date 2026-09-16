@@ -693,22 +693,25 @@ class WorkerPool:
                 except asyncio.CancelledError:
                     raise
 
-                OperationCompleted = False
                 try:
                     await self.CleanerInstance.Request(Item[0], Item[1], Item[2])
-                    OperationCompleted = True
                 except asyncio.CancelledError:
                     async with StatsLock:
                         Stats["Abandoned"] += 1
-                    raise
-                except Exception:
-                    OperationCompleted = True
-                finally:
                     try:
                         self.CleanerInstance.Queue.task_done()
                     except Exception:
                         pass
-                    if not OperationCompleted and StopEvent is not None and StopEvent.is_set():
+                    raise
+                except Exception:
+                    try:
+                        self.CleanerInstance.Queue.task_done()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.CleanerInstance.Queue.task_done()
+                    except Exception:
                         pass
         except asyncio.CancelledError:
             raise
@@ -794,6 +797,20 @@ class WorkerPool:
                 pass
         if TasksSnapshot:
             await asyncio.gather(*TasksSnapshot, return_exceptions=True)
+        Queue = self.CleanerInstance.Queue
+        if Queue is not None:
+            while True:
+                try:
+                    Queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                else:
+                    async with StatsLock:
+                        Stats["Abandoned"] += 1
+                    try:
+                        Queue.task_done()
+                    except Exception:
+                        pass
 
 
 async def ProgressReporter(Total: int) -> None:
