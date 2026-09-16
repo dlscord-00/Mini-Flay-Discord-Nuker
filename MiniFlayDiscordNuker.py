@@ -12,243 +12,243 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import httpx
 
-Reset = "\033[0m"
-Bold = "\033[1m"
-Gray = "\033[90m"
-White = "\033[37m"
-BrightRed = "\033[91m"
-BrightGreen = "\033[92m"
-BrightYellow = "\033[93m"
-BrightBlue = "\033[94m"
-BrightMagenta = "\033[95m"
-BrightCyan = "\033[96m"
-Orange = "\033[38;5;208m"
-Purple = "\033[38;5;135m"
-Pink = "\033[38;5;213m"
-Teal = "\033[38;5;51m"
-Lime = "\033[38;5;154m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
+GRAY = "\033[90m"
+WHITE = "\033[37m"
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+MAGENTA = "\033[95m"
+CYAN = "\033[96m"
+ORANGE = "\033[38;5;208m"
+PURPLE = "\033[38;5;135m"
+PINK = "\033[38;5;213m"
+TEAL = "\033[38;5;51m"
+LIME = "\033[38;5;154m"
 
-ApiBase = "https://discord.com/api/v10"
+API_BASE = "https://discord.com/api/v10"
 
-MaxRetries = 5
-InitialWorkers = 24
-MinWorkers = 12
-MaxWorkers = 40
+MAX_RETRIES = 5
+INITIAL_WORKERS = 24
+MIN_WORKERS = 12
+MAX_WORKERS = 40
 
-JitterMin = 0.003
-JitterMax = 0.020
-BackoffBase = 0.10
-BackoffMax = 2.5
+JITTER_MIN = 0.003
+JITTER_MAX = 0.020
+BACKOFF_BASE = 0.10
+BACKOFF_MAX = 2.5
 
-ConnectTimeout = 3.5
-ReadTimeout = 10.0
-WriteTimeout = 10.0
-PoolTimeout = 3.5
-MaxConnections = 120
-MaxKeepalive = 60
-KeepaliveExpiry = 30.0
+CONNECT_TIMEOUT = 3.5
+READ_TIMEOUT = 10.0
+WRITE_TIMEOUT = 10.0
+POOL_TIMEOUT = 3.5
+MAX_CONNECTIONS = 120
+MAX_KEEPALIVE = 60
+KEEPALIVE_EXPIRY = 30.0
 
-ProgressInterval = 0.35
-AutotuneInterval = 1.2
-AutotuneLogCooldown = 8.0
+PROGRESS_INTERVAL = 0.35
+AUTOTUNE_INTERVAL = 1.2
+AUTOTUNE_LOG_COOLDOWN = 8.0
 
-GlobalRateLimitCap = 90.0
-QueueGetTimeout = 1.0
-WorkerStaggerMax = 0.04
-InterruptibleSleepSlice = 0.25
+GLOBAL_RL_CAP = 90.0
+QUEUE_TIMEOUT = 1.0
+STAGGER_MAX = 0.04
+SLEEP_SLICE = 0.25
 
-AutotuneUpStep = 3
-AutotuneDownFactor = 0.75
-AutotuneRateLimitThreshold = 0.25
-AutotuneSuccessThreshold = 15
+TUNE_UP_STEP = 3
+TUNE_DOWN_FACTOR = 0.75
+TUNE_RL_THRESHOLD = 0.25
+TUNE_SUCCESS_THRESHOLD = 15
 
-PermAdministrator = 1 << 3
-PermManageChannels = 1 << 4
-PermManageGuild = 1 << 5
-PermManageRoles = 1 << 28
-PermManageWebhooks = 1 << 29
-PermManageGuildExpressions = 1 << 30
+PERM_ADMIN = 1 << 3
+PERM_CHANNELS = 1 << 4
+PERM_GUILD = 1 << 5
+PERM_ROLES = 1 << 28
+PERM_WEBHOOKS = 1 << 29
+PERM_EXPRESSIONS = 1 << 30
 
-Stats: Dict[str, Any] = {
-    "Done": 0,
-    "Already": 0,
-    "Failed": 0,
-    "Retries": 0,
-    "RateLimits": 0,
-    "Abandoned": 0,
-    "StartTime": 0.0,
+stats: Dict[str, Any] = {
+    "done": 0,
+    "already": 0,
+    "failed": 0,
+    "retries": 0,
+    "rate_limits": 0,
+    "abandoned": 0,
+    "start_time": 0.0,
 }
 
-StatsLock: Optional[asyncio.Lock] = None
-StopEvent: Optional[asyncio.Event] = None
+stats_lock: Optional[asyncio.Lock] = None
+stop_event: Optional[asyncio.Event] = None
 
 
-def SafePrint(Text: str, End: str = "\n") -> None:
+def safe_print(text: str, end: str = "\n") -> None:
     try:
-        print(Text, end=End, flush=True)
+        print(text, end=end, flush=True)
     except UnicodeEncodeError:
         try:
-            print(Text.encode("ascii", "ignore").decode("ascii"), end=End, flush=True)
+            print(text.encode("ascii", "ignore").decode("ascii"), end=end, flush=True)
         except Exception:
             pass
     except Exception:
         pass
 
 
-def SafeClear() -> None:
+def clear_screen() -> None:
     try:
         os.system("cls" if os.name == "nt" else "clear")
     except Exception:
         pass
 
 
-def Box(Title: str, Message: str, Color: str = BrightCyan) -> None:
-    SafePrint("\r\033[K", End="")
-    SafePrint("")
-    SafePrint(
-        f"{Purple}┌─ {Color}{Bold}{Title}{Reset} "
-        f"{Purple}───────────────────────────────────────────────────┐{Reset}"
+def draw_box(title: str, message: str, color: str = CYAN) -> None:
+    safe_print("\r\033[K", end="")
+    safe_print("")
+    safe_print(
+        f"{PURPLE}┌─ {color}{BOLD}{title}{RESET} "
+        f"{PURPLE}───────────────────────────────────────────────────┐{RESET}"
     )
-    for Line in str(Message).split("\n"):
-        if Line:
-            SafePrint(f"{Purple}│{Reset} {Color}{Line}{Reset}")
-    SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
-    SafePrint("")
+    for line in str(message).split("\n"):
+        if line:
+            safe_print(f"{PURPLE}│{RESET} {color}{line}{RESET}")
+    safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
+    safe_print("")
 
 
-def ErrorBox(Message: str) -> None:
-    Box("Error", Message, BrightRed)
+def error_box(message: str) -> None:
+    draw_box("Error", message, RED)
 
 
-def InfoBox(Message: str) -> None:
-    Box("Info", Message, BrightCyan)
+def info_box(message: str) -> None:
+    draw_box("Info", message, CYAN)
 
 
-def WarningBox(Message: str) -> None:
-    Box("Warning", Message, BrightYellow)
+def warn_box(message: str) -> None:
+    draw_box("Warning", message, YELLOW)
 
 
-def FormatProgressBar(Done: int, Total: int, Width: int = 30) -> str:
-    Width = max(0, min(200, Width))
-    if Total <= 0:
-        return f"{Purple}[{' ' * Width}]{Reset}"
-    Done = max(0, min(Done, Total))
-    Percent = SafeDiv(Done, Total, 0)
-    Filled = max(0, min(Width, int(Width * Percent)))
-    if Percent < 0.33:
-        Color = BrightRed
-    elif Percent < 0.66:
-        Color = Orange
+def progress_bar(done: int, total: int, width: int = 30) -> str:
+    width = max(0, min(200, width))
+    if total <= 0:
+        return f"{PURPLE}[{' ' * width}]{RESET}"
+    done = max(0, min(done, total))
+    pct = safe_div(done, total, 0)
+    filled = max(0, min(width, int(width * pct)))
+    if pct < 0.33:
+        color = RED
+    elif pct < 0.66:
+        color = ORANGE
     else:
-        Color = BrightGreen
-    Bar = f"{Color}{'█' * Filled}{Purple}{'░' * (Width - Filled)}{Reset}"
-    return f"{Purple}[{Reset}{Bar}{Purple}]{Reset}"
+        color = GREEN
+    bar = f"{color}{'█' * filled}{PURPLE}{'░' * (width - filled)}{RESET}"
+    return f"{PURPLE}[{RESET}{bar}{PURPLE}]{RESET}"
 
 
-async def SafeSleep(Seconds: float) -> None:
-    await asyncio.sleep(max(0.0, min(120.0, Seconds)))
+async def safe_sleep(seconds: float) -> None:
+    await asyncio.sleep(max(0.0, min(120.0, seconds)))
 
 
-async def InterruptibleSleep(Seconds: float) -> bool:
-    Remaining = max(0.0, min(120.0, Seconds))
-    while Remaining > 0.0:
-        if StopEvent is not None and StopEvent.is_set():
+async def interruptible_sleep(seconds: float) -> bool:
+    remaining = max(0.0, min(120.0, seconds))
+    while remaining > 0.0:
+        if stop_event is not None and stop_event.is_set():
             return False
-        Slice = min(InterruptibleSleepSlice, Remaining)
+        chunk = min(SLEEP_SLICE, remaining)
         try:
-            await asyncio.sleep(Slice)
+            await asyncio.sleep(chunk)
         except asyncio.CancelledError:
             raise
-        Remaining -= Slice
+        remaining -= chunk
     return True
 
 
-def SafeRandomUniform(Low: float, High: float) -> float:
+def jitter(low: float, high: float) -> float:
     try:
-        if Low > High:
-            Low, High = High, Low
-        return random.uniform(Low, High)
+        if low > high:
+            low, high = high, low
+        return random.uniform(low, high)
     except Exception:
-        return JitterMin
+        return JITTER_MIN
 
 
-def SafeInt(Value: Any, Default: int = 0) -> int:
+def to_int(value: Any, default: int = 0) -> int:
     try:
-        return int(Value)
+        return int(value)
     except (ValueError, TypeError, OverflowError):
-        return Default
+        return default
 
 
-def SafeFloat(Value: Any, Default: float = 0.0) -> float:
+def to_float(value: Any, default: float = 0.0) -> float:
     try:
-        return float(Value)
+        return float(value)
     except (ValueError, TypeError, OverflowError):
-        return Default
+        return default
 
 
-def SafeJson(Response: httpx.Response) -> Any:
+def parse_json(response: httpx.Response) -> Any:
     try:
-        return Response.json()
+        return response.json()
     except Exception:
         return None
 
 
-def SafeGet(Mapping: Any, Key: str, Default: Any = None) -> Any:
-    if not isinstance(Mapping, dict):
-        return Default
-    return Mapping.get(Key, Default)
+def dig(mapping: Any, key: str, default: Any = None) -> Any:
+    if not isinstance(mapping, dict):
+        return default
+    return mapping.get(key, default)
 
 
-def SafeDiv(Numerator: float, Denominator: float, Default: float = 0.0) -> float:
-    if Denominator == 0:
-        return Default
-    return Numerator / Denominator
+def safe_div(num: float, den: float, default: float = 0.0) -> float:
+    if den == 0:
+        return default
+    return num / den
 
 
-def SafeInput(Prompt: str) -> str:
+def prompt(text: str) -> str:
     try:
-        return input(Prompt).strip()
+        return input(text).strip()
     except (EOFError, UnicodeDecodeError):
         return ""
 
 
-def SafeGetpass(Prompt: str) -> str:
+def secret_prompt(text: str) -> str:
     try:
         import pwinput
-        return pwinput.pwinput(prompt=Prompt, mask="*").strip()
+        return pwinput.pwinput(prompt=text, mask="*").strip()
     except ImportError:
         pass
     except Exception:
         pass
     try:
-        return getpass.getpass(prompt=Prompt).strip()
+        return getpass.getpass(prompt=text).strip()
     except Exception:
         return ""
 
 
-def ComputeBackoff(Attempt: int) -> float:
-    Exponential = min(BackoffBase * (2 ** Attempt), BackoffMax)
-    return Exponential + SafeRandomUniform(JitterMin, JitterMax)
+def backoff(attempt: int) -> float:
+    exp = min(BACKOFF_BASE * (2 ** attempt), BACKOFF_MAX)
+    return exp + jitter(JITTER_MIN, JITTER_MAX)
 
 
-def IsMutatingMethod(Method: str) -> bool:
-    return Method.upper() in ("DELETE", "PUT", "POST", "PATCH")
+def is_write_op(method: str) -> bool:
+    return method.upper() in ("DELETE", "PUT", "POST", "PATCH")
 
 
-def CheckHttp2Available() -> bool:
+def require_http2() -> bool:
     if importlib.util.find_spec("h2") is None:
-        ErrorBox("Missing dependency: h2\nInstall it with: pip install httpx[http2]")
+        error_box("Missing dependency: h2\nInstall it with: pip install httpx[http2]")
         return False
     return True
 
 
-class GuildNuker:
-    def __init__(self, Token: str, GuildId: str) -> None:
-        self.Token = Token
-        self.GuildId = GuildId
+class ServerNuker:
+    def __init__(self, token: str, guild_id: str) -> None:
+        self.token = token
+        self.guild_id = guild_id
 
-        self.Headers: Dict[str, str] = {
-            "Authorization": Token,
+        self.headers: Dict[str, str] = {
+            "Authorization": token,
             "Content-Type": "application/json",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -267,426 +267,426 @@ class GuildNuker:
             ),
         }
 
-        self.Client: Optional[httpx.AsyncClient] = None
-        self.Queue: Optional[asyncio.Queue[Tuple[str, str, Optional[Dict[str, Any]]]]] = None
+        self.client: Optional[httpx.AsyncClient] = None
+        self.queue: Optional[asyncio.Queue[Tuple[str, str, Optional[Dict[str, Any]]]]] = None
 
-        self.ResourceCache: Dict[str, Optional[List[Any]]] = {
-            "Channels": None,
-            "Roles": None,
+        self.cache: Dict[str, Optional[List[Any]]] = {
+            "channels": None,
+            "roles": None,
         }
 
-        self.User: Optional[Dict[str, Any]] = None
-        self.Guild: Optional[Dict[str, Any]] = None
-        self.Permissions: int = 0
-        self.IsOwner: bool = False
-        self.IsAdmin: bool = False
+        self.user: Optional[Dict[str, Any]] = None
+        self.guild: Optional[Dict[str, Any]] = None
+        self.perms: int = 0
+        self.is_owner: bool = False
+        self.is_admin: bool = False
 
-        self.GuildOwnerId: Optional[str] = None
-        self.UserHighestRolePosition: int = -1
-        self.UserRoleIds: Set[str] = set()
-        self.RolePositions: Dict[str, int] = {}
-        self.RoleCache: Dict[str, Dict[str, Any]] = {}
-        self.AllRolesRaw: List[Any] = []
+        self.owner_id: Optional[str] = None
+        self.top_role_pos: int = -1
+        self.my_role_ids: Set[str] = set()
+        self.role_pos: Dict[str, int] = {}
+        self.role_cache: Dict[str, Dict[str, Any]] = {}
+        self.raw_roles: List[Any] = []
 
-    async def __aenter__(self) -> "GuildNuker":
-        self.Queue = asyncio.Queue()
-        Limits = httpx.Limits(
-            max_connections=MaxConnections,
-            max_keepalive_connections=MaxKeepalive,
-            keepalive_expiry=KeepaliveExpiry,
+    async def __aenter__(self) -> "ServerNuker":
+        self.queue = asyncio.Queue()
+        limits = httpx.Limits(
+            max_connections=MAX_CONNECTIONS,
+            max_keepalive_connections=MAX_KEEPALIVE,
+            keepalive_expiry=KEEPALIVE_EXPIRY,
         )
-        Timeout = httpx.Timeout(
-            connect=ConnectTimeout,
-            read=ReadTimeout,
-            write=WriteTimeout,
-            pool=PoolTimeout,
+        timeout = httpx.Timeout(
+            connect=CONNECT_TIMEOUT,
+            read=READ_TIMEOUT,
+            write=WRITE_TIMEOUT,
+            pool=POOL_TIMEOUT,
         )
-        self.Client = httpx.AsyncClient(
-            timeout=Timeout,
-            limits=Limits,
-            headers=self.Headers,
+        self.client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            headers=self.headers,
             http2=True,
             follow_redirects=True,
         )
         return self
 
-    async def __aexit__(self, *Args: Any) -> None:
+    async def __aexit__(self, *args: Any) -> None:
         try:
-            if self.Client is not None:
-                await self.Client.aclose()
+            if self.client is not None:
+                await self.client.aclose()
         except Exception:
             pass
 
-    async def ValidateToken(self) -> bool:
+    async def validate_token(self) -> bool:
         try:
-            Response = await self.Request("GET", f"{ApiBase}/users/@me")
-            if Response is not None and Response.status_code == 200:
-                Data = SafeJson(Response)
-                if isinstance(Data, dict):
-                    self.User = Data
+            resp = await self.request("GET", f"{API_BASE}/users/@me")
+            if resp is not None and resp.status_code == 200:
+                data = parse_json(resp)
+                if isinstance(data, dict):
+                    self.user = data
                     return True
             return False
         except Exception:
             return False
 
-    async def ValidateGuild(self) -> bool:
+    async def validate_guild(self) -> bool:
         try:
-            Response = await self.Request("GET", f"{ApiBase}/guilds/{self.GuildId}")
-            if Response is not None and Response.status_code == 200:
-                Data = SafeJson(Response)
-                if isinstance(Data, dict):
-                    self.Guild = Data
+            resp = await self.request("GET", f"{API_BASE}/guilds/{self.guild_id}")
+            if resp is not None and resp.status_code == 200:
+                data = parse_json(resp)
+                if isinstance(data, dict):
+                    self.guild = data
                     return True
             return False
         except Exception:
             return False
 
-    async def LoadRolesAndMember(self) -> bool:
+    async def load_context(self) -> bool:
         try:
-            if not self.Guild or not self.User:
+            if not self.guild or not self.user:
                 return False
-            MyId = SafeGet(self.User, "id")
-            if not MyId:
-                return False
-
-            self.GuildOwnerId = SafeGet(self.Guild, "owner_id")
-
-            RolesResponse = await self.Request("GET", f"{ApiBase}/guilds/{self.GuildId}/roles")
-            if RolesResponse is None or RolesResponse.status_code != 200:
-                return False
-            AllRoles = SafeJson(RolesResponse)
-            if not isinstance(AllRoles, list):
+            my_id = dig(self.user, "id")
+            if not my_id:
                 return False
 
-            self.AllRolesRaw = AllRoles
-            self.RolePositions.clear()
-            self.RoleCache.clear()
-            for Role in AllRoles:
-                if not isinstance(Role, dict):
+            self.owner_id = dig(self.guild, "owner_id")
+
+            roles_resp = await self.request("GET", f"{API_BASE}/guilds/{self.guild_id}/roles")
+            if roles_resp is None or roles_resp.status_code != 200:
+                return False
+            all_roles = parse_json(roles_resp)
+            if not isinstance(all_roles, list):
+                return False
+
+            self.raw_roles = all_roles
+            self.role_pos.clear()
+            self.role_cache.clear()
+            for role in all_roles:
+                if not isinstance(role, dict):
                     continue
-                RoleId = SafeGet(Role, "id")
-                if not RoleId:
+                rid = dig(role, "id")
+                if not rid:
                     continue
-                self.RolePositions[RoleId] = SafeInt(SafeGet(Role, "position", 0), 0)
-                self.RoleCache[RoleId] = Role
+                self.role_pos[rid] = to_int(dig(role, "position", 0), 0)
+                self.role_cache[rid] = role
 
-            if self.GuildOwnerId == MyId:
-                self.IsOwner = True
-                self.IsAdmin = True
-                self.Permissions = 0xFFFFFFFFFFFFFFFF
-                self.UserHighestRolePosition = 1 << 30
-                self.UserRoleIds = set()
-                self.ResourceCache["Roles"] = AllRoles
+            if self.owner_id == my_id:
+                self.is_owner = True
+                self.is_admin = True
+                self.perms = 0xFFFFFFFFFFFFFFFF
+                self.top_role_pos = 1 << 30
+                self.my_role_ids = set()
+                self.cache["roles"] = all_roles
                 return True
 
-            MemberResponse = await self.Request(
-                "GET", f"{ApiBase}/guilds/{self.GuildId}/members/{MyId}"
+            member_resp = await self.request(
+                "GET", f"{API_BASE}/guilds/{self.guild_id}/members/{my_id}"
             )
-            if MemberResponse is None:
+            if member_resp is None:
                 return False
 
-            if MemberResponse.status_code != 200:
-                self.Permissions = 0
-                self.IsAdmin = False
-                self.UserRoleIds = set()
-                self.UserHighestRolePosition = 0
-                self.ResourceCache["Roles"] = AllRoles
+            if member_resp.status_code != 200:
+                self.perms = 0
+                self.is_admin = False
+                self.my_role_ids = set()
+                self.top_role_pos = 0
+                self.cache["roles"] = all_roles
                 return True
 
-            Member = SafeJson(MemberResponse)
-            if not isinstance(Member, dict):
-                self.Permissions = 0
-                self.IsAdmin = False
-                self.UserRoleIds = set()
-                self.UserHighestRolePosition = 0
-                self.ResourceCache["Roles"] = AllRoles
+            member = parse_json(member_resp)
+            if not isinstance(member, dict):
+                self.perms = 0
+                self.is_admin = False
+                self.my_role_ids = set()
+                self.top_role_pos = 0
+                self.cache["roles"] = all_roles
                 return True
 
-            MyRoles = set(SafeGet(Member, "roles", []) or [])
-            self.UserRoleIds = {str(R) for R in MyRoles}
+            my_roles = set(dig(member, "roles", []) or [])
+            self.my_role_ids = {str(r) for r in my_roles}
 
-            Accumulated = 0
-            for Role in AllRoles:
-                if not isinstance(Role, dict):
+            accumulated = 0
+            for role in all_roles:
+                if not isinstance(role, dict):
                     continue
-                RoleId = SafeGet(Role, "id")
-                if not RoleId:
+                rid = dig(role, "id")
+                if not rid:
                     continue
-                if RoleId == self.GuildId or RoleId in MyRoles:
-                    Accumulated |= SafeInt(SafeGet(Role, "permissions", 0), 0)
+                if rid == self.guild_id or rid in my_roles:
+                    accumulated |= to_int(dig(role, "permissions", 0), 0)
 
-            self.Permissions = Accumulated
-            self.IsAdmin = bool(Accumulated & PermAdministrator)
+            self.perms = accumulated
+            self.is_admin = bool(accumulated & PERM_ADMIN)
 
-            Highest = max(
-                (self.RolePositions.get(Rid, 0) for Rid in self.UserRoleIds),
+            highest = max(
+                (self.role_pos.get(rid, 0) for rid in self.my_role_ids),
                 default=0,
             )
-            self.UserHighestRolePosition = Highest
-            self.ResourceCache["Roles"] = AllRoles
+            self.top_role_pos = highest
+            self.cache["roles"] = all_roles
             return True
         except Exception:
             return False
 
-    async def ValidateAll(self) -> bool:
-        SafePrint("")
-        SafePrint(
-            f"{Purple}┌─ {BrightMagenta}{Bold}Validation{Reset} "
-            f"{Purple}───────────────────────────────────────────────┐{Reset}"
+    async def setup(self) -> bool:
+        safe_print("")
+        safe_print(
+            f"{PURPLE}┌─ {MAGENTA}{BOLD}Validation{RESET} "
+            f"{PURPLE}───────────────────────────────────────────────┐{RESET}"
         )
 
-        if not self.Token:
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: required{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not self.token:
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Token: required{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        if not await self.ValidateToken():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Token: invalid{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not await self.validate_token():
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Token: invalid{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        Username = SafeGet(self.User, "username", "Unknown")
-        Discriminator = SafeGet(self.User, "discriminator", "0")
-        DisplayName = f"{Username}#{Discriminator}" if Discriminator != "0" else Username
-        SafePrint(f"{Purple}│{Reset} {BrightGreen}✔ Token: {Teal}{Bold}{DisplayName}{Reset}")
+        username = dig(self.user, "username", "Unknown")
+        disc = dig(self.user, "discriminator", "0")
+        display = f"{username}#{disc}" if disc != "0" else username
+        safe_print(f"{PURPLE}│{RESET} {GREEN}✔ Token: {TEAL}{BOLD}{display}{RESET}")
 
-        if not self.GuildId:
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: required{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not self.guild_id:
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Guild: required{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        if not self.GuildId.isdigit():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: invalid ID format{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not self.guild_id.isdigit():
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Guild: invalid ID format{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        if not await self.ValidateGuild():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Guild: not found{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not await self.validate_guild():
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Guild: not found{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        SafePrint(
-            f"{Purple}│{Reset} {BrightGreen}✔ Guild: {Teal}{Bold}"
-            f"{SafeGet(self.Guild, 'name', 'Unknown')}{Reset}"
+        safe_print(
+            f"{PURPLE}│{RESET} {GREEN}✔ Guild: {TEAL}{BOLD}"
+            f"{dig(self.guild, 'name', 'Unknown')}{RESET}"
         )
 
-        if not await self.LoadRolesAndMember():
-            SafePrint(f"{Purple}│{Reset} {BrightRed}✘ Permissions / Hierarchy: could not load{Reset}")
-            SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        if not await self.load_context():
+            safe_print(f"{PURPLE}│{RESET} {RED}✘ Permissions / Hierarchy: could not load{RESET}")
+            safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
             return False
 
-        if self.IsOwner:
-            SafePrint(f"{Purple}│{Reset} {BrightGreen}✔ Permissions: {Teal}{Bold}Owner{Reset}")
-        elif self.IsAdmin:
-            SafePrint(f"{Purple}│{Reset} {BrightGreen}✔ Permissions: {Teal}{Bold}Administrator{Reset}")
+        if self.is_owner:
+            safe_print(f"{PURPLE}│{RESET} {GREEN}✔ Permissions: {TEAL}{BOLD}Owner{RESET}")
+        elif self.is_admin:
+            safe_print(f"{PURPLE}│{RESET} {GREEN}✔ Permissions: {TEAL}{BOLD}Administrator{RESET}")
         else:
-            SafePrint(f"{Purple}│{Reset} {BrightYellow}⚠ Permissions: {Teal}{Bold}Limited{Reset}")
+            safe_print(f"{PURPLE}│{RESET} {YELLOW}⚠ Permissions: {TEAL}{BOLD}Limited{RESET}")
 
-        PermissionChecks = [
-            ("Manage Channels", PermManageChannels),
-            ("Manage Roles", PermManageRoles),
-            ("Manage Guild", PermManageGuild),
-            ("Manage Webhooks", PermManageWebhooks),
-            ("Manage Expressions", PermManageGuildExpressions),
+        perm_checks = [
+            ("Manage Channels", PERM_CHANNELS),
+            ("Manage Roles", PERM_ROLES),
+            ("Manage Guild", PERM_GUILD),
+            ("Manage Webhooks", PERM_WEBHOOKS),
+            ("Manage Expressions", PERM_EXPRESSIONS),
         ]
-        GrantedPerms = [Name for Name, Flag in PermissionChecks if self.HasPerm(Flag)]
-        MissingPerms = [Name for Name, Flag in PermissionChecks if not self.HasPerm(Flag)]
+        granted = [name for name, flag in perm_checks if self.has_perm(flag)]
+        missing = [name for name, flag in perm_checks if not self.has_perm(flag)]
 
-        SafePrint(
-            f"{Purple}│{Reset} {BrightGreen}✔ Granted:{Reset} "
-            f"{Teal}{', '.join(GrantedPerms) or 'None'}{Reset}"
+        safe_print(
+            f"{PURPLE}│{RESET} {GREEN}✔ Granted:{RESET} "
+            f"{TEAL}{', '.join(granted) or 'None'}{RESET}"
         )
-        if MissingPerms:
-            SafePrint(
-                f"{Purple}│{Reset} {BrightYellow}⚠ Missing:{Reset} "
-                f"{Gray}{', '.join(MissingPerms)}{Reset}"
+        if missing:
+            safe_print(
+                f"{PURPLE}│{RESET} {YELLOW}⚠ Missing:{RESET} "
+                f"{GRAY}{', '.join(missing)}{RESET}"
             )
 
-        HierarchyLabel = "Owner" if self.IsOwner else f"Position {self.UserHighestRolePosition}"
-        SafePrint(
-            f"{Purple}│{Reset} {BrightBlue}⌂ Hierarchy:{Reset} "
-            f"{Teal}{HierarchyLabel}{Reset}"
+        hierarchy = "Owner" if self.is_owner else f"Position {self.top_role_pos}"
+        safe_print(
+            f"{PURPLE}│{RESET} {BLUE}⌂ Hierarchy:{RESET} "
+            f"{TEAL}{hierarchy}{RESET}"
         )
-        SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
         return True
 
-    async def Request(
+    async def request(
         self,
-        Method: str,
-        Url: str,
-        JsonPayload: Optional[Dict[str, Any]] = None,
+        method: str,
+        url: str,
+        payload: Optional[Dict[str, Any]] = None,
     ) -> Optional[httpx.Response]:
         try:
-            if StopEvent is None or StopEvent.is_set():
+            if stop_event is None or stop_event.is_set():
                 return None
-            if StatsLock is None or self.Client is None:
+            if stats_lock is None or self.client is None:
                 return None
 
-            Mutating = IsMutatingMethod(Method)
+            mutating = is_write_op(method)
 
-            for Attempt in range(MaxRetries):
-                if StopEvent is None or StopEvent.is_set():
+            for attempt in range(MAX_RETRIES):
+                if stop_event is None or stop_event.is_set():
                     return None
 
                 try:
-                    Response = await self.Client.request(Method, Url, json=JsonPayload)
+                    resp = await self.client.request(method, url, json=payload)
                 except asyncio.CancelledError:
                     raise
                 except (httpx.RequestError, asyncio.TimeoutError):
-                    async with StatsLock:
-                        Stats["Retries"] += 1
-                    Completed = await InterruptibleSleep(ComputeBackoff(Attempt))
-                    if not Completed:
+                    async with stats_lock:
+                        stats["retries"] += 1
+                    ok = await interruptible_sleep(backoff(attempt))
+                    if not ok:
                         return None
                     continue
                 except Exception:
                     return None
 
-                Status = Response.status_code
+                status = resp.status_code
 
-                if Status in (200, 201, 204):
-                    if Mutating:
-                        async with StatsLock:
-                            Stats["Done"] += 1
-                    return Response
+                if status in (200, 201, 204):
+                    if mutating:
+                        async with stats_lock:
+                            stats["done"] += 1
+                    return resp
 
-                if Status == 404:
-                    if Mutating:
-                        async with StatsLock:
-                            Stats["Already"] += 1
-                    return Response
+                if status == 404:
+                    if mutating:
+                        async with stats_lock:
+                            stats["already"] += 1
+                    return resp
 
-                if Status == 429:
-                    Body = SafeJson(Response) or {}
-                    RetryAfter = SafeFloat(Body.get("retry_after", 1.0), 1.0)
-                    Scope = Response.headers.get("X-RateLimit-Scope", "")
+                if status == 429:
+                    resp_body = parse_json(resp) or {}
+                    retry_after = to_float(resp_body.get("retry_after", 1.0), 1.0)
+                    scope = resp.headers.get("X-RateLimit-Scope", "")
                     try:
-                        HeaderRetry = Response.headers.get("Retry-After")
-                        if HeaderRetry is not None:
-                            RetryAfter = max(RetryAfter, SafeFloat(HeaderRetry, RetryAfter))
+                        header_retry = resp.headers.get("Retry-After")
+                        if header_retry is not None:
+                            retry_after = max(retry_after, to_float(header_retry, retry_after))
                     except Exception:
                         pass
-                    IsGlobal = bool(Body.get("global", False)) or Scope == "global"
-                    async with StatsLock:
-                        Stats["RateLimits"] += 1
-                        Stats["Retries"] += 1
-                    SleepDuration = RetryAfter + SafeRandomUniform(JitterMin, JitterMax)
-                    if IsGlobal:
-                        WarningBox(f"Global rate limit — sleeping {SleepDuration:.2f}s")
-                    Completed = await InterruptibleSleep(min(SleepDuration, GlobalRateLimitCap))
-                    if not Completed:
+                    is_global = bool(resp_body.get("global", False)) or scope == "global"
+                    async with stats_lock:
+                        stats["rate_limits"] += 1
+                        stats["retries"] += 1
+                    sleep_for = retry_after + jitter(JITTER_MIN, JITTER_MAX)
+                    if is_global:
+                        warn_box(f"Global rate limit — sleeping {sleep_for:.2f}s")
+                    ok = await interruptible_sleep(min(sleep_for, GLOBAL_RL_CAP))
+                    if not ok:
                         return None
                     continue
 
-                if Status in (401, 403):
-                    if Mutating:
-                        async with StatsLock:
-                            Stats["Failed"] += 1
-                    return Response
+                if status in (401, 403):
+                    if mutating:
+                        async with stats_lock:
+                            stats["failed"] += 1
+                    return resp
 
-                if Status in (500, 502, 503, 504):
-                    async with StatsLock:
-                        Stats["Retries"] += 1
-                    Completed = await InterruptibleSleep(ComputeBackoff(Attempt))
-                    if not Completed:
+                if status in (500, 502, 503, 504):
+                    async with stats_lock:
+                        stats["retries"] += 1
+                    ok = await interruptible_sleep(backoff(attempt))
+                    if not ok:
                         return None
                     continue
 
-                if Mutating:
-                    async with StatsLock:
-                        Stats["Failed"] += 1
-                return Response
+                if mutating:
+                    async with stats_lock:
+                        stats["failed"] += 1
+                return resp
 
-            if Mutating:
-                async with StatsLock:
-                    Stats["Failed"] += 1
+            if mutating:
+                async with stats_lock:
+                    stats["failed"] += 1
             return None
         except asyncio.CancelledError:
             raise
         except Exception:
             return None
 
-    async def GetChannels(self) -> List[Any]:
-        if self.ResourceCache["Channels"] is not None:
-            return self.ResourceCache["Channels"]
-        Response = await self.Request("GET", f"{ApiBase}/guilds/{self.GuildId}/channels")
-        if Response is not None and Response.status_code == 200:
-            Data = SafeJson(Response)
-            if isinstance(Data, list):
-                self.ResourceCache["Channels"] = Data
-                return Data
+    async def get_channels(self) -> List[Any]:
+        if self.cache["channels"] is not None:
+            return self.cache["channels"]
+        resp = await self.request("GET", f"{API_BASE}/guilds/{self.guild_id}/channels")
+        if resp is not None and resp.status_code == 200:
+            data = parse_json(resp)
+            if isinstance(data, list):
+                self.cache["channels"] = data
+                return data
         return []
 
-    async def GetRoles(self) -> List[Any]:
-        if self.ResourceCache["Roles"] is not None:
-            return self.ResourceCache["Roles"]
-        Response = await self.Request("GET", f"{ApiBase}/guilds/{self.GuildId}/roles")
-        if Response is not None and Response.status_code == 200:
-            Data = SafeJson(Response)
-            if isinstance(Data, list):
-                self.ResourceCache["Roles"] = Data
-                return Data
+    async def get_roles(self) -> List[Any]:
+        if self.cache["roles"] is not None:
+            return self.cache["roles"]
+        resp = await self.request("GET", f"{API_BASE}/guilds/{self.guild_id}/roles")
+        if resp is not None and resp.status_code == 200:
+            data = parse_json(resp)
+            if isinstance(data, list):
+                self.cache["roles"] = data
+                return data
         return []
 
-    def HasPerm(self, Flag: int) -> bool:
-        if self.Permissions & PermAdministrator:
+    def has_perm(self, flag: int) -> bool:
+        if self.perms & PERM_ADMIN:
             return True
-        return bool(self.Permissions & Flag)
+        return bool(self.perms & flag)
 
-    def IsGuildOwner(self) -> bool:
+    def guild_owner(self) -> bool:
         return bool(
-            self.User
-            and self.Guild
-            and SafeGet(self.User, "id") == SafeGet(self.Guild, "owner_id")
+            self.user
+            and self.guild
+            and dig(self.user, "id") == dig(self.guild, "owner_id")
         )
 
-    def CanManageRole(self, RoleId: str) -> Tuple[bool, str]:
-        if not self.HasPerm(PermManageRoles):
+    def can_manage_role(self, role_id: str) -> Tuple[bool, str]:
+        if not self.has_perm(PERM_ROLES):
             return False, "Missing Manage Roles"
-        Role = self.RoleCache.get(RoleId)
-        if not Role:
+        role = self.role_cache.get(role_id)
+        if not role:
             return False, "Role not in cache"
-        if SafeGet(Role, "managed", False):
+        if dig(role, "managed", False):
             return False, "Bot-managed role"
-        if RoleId == self.GuildId:
+        if role_id == self.guild_id:
             return False, "Cannot modify @everyone"
-        if self.IsGuildOwner():
+        if self.guild_owner():
             return True, ""
-        TargetPos = self.RolePositions.get(RoleId, 0)
-        if TargetPos >= self.UserHighestRolePosition:
+        target_pos = self.role_pos.get(role_id, 0)
+        if target_pos >= self.top_role_pos:
             return False, (
-                f"Role position {TargetPos} >= user position {self.UserHighestRolePosition}"
+                f"Role position {target_pos} >= user position {self.top_role_pos}"
             )
         return True, ""
 
 
-class WorkerPool:
-    def __init__(self, CleanerInstance: GuildNuker) -> None:
-        self.CleanerInstance = CleanerInstance
-        self.CurrentWorkers = InitialWorkers
-        self.Tasks: Deque[asyncio.Task[None]] = deque()
-        self.PoolLock = asyncio.Lock()
-        self.LastAutotuneLog: float = 0.0
+class TaskPool:
+    def __init__(self, mgr: ServerNuker) -> None:
+        self.mgr = mgr
+        self.count = INITIAL_WORKERS
+        self.tasks: Deque[asyncio.Task[None]] = deque()
+        self.lock = asyncio.Lock()
+        self.last_log: float = 0.0
 
-    async def Worker(self, Stagger: float = 0.0) -> None:
+    async def work(self, stagger: float = 0.0) -> None:
         try:
-            if Stagger > 0:
+            if stagger > 0:
                 try:
-                    Completed = await InterruptibleSleep(Stagger)
-                    if not Completed:
+                    ok = await interruptible_sleep(stagger)
+                    if not ok:
                         return
                 except asyncio.CancelledError:
                     raise
 
             while True:
-                if StopEvent is None or StopEvent.is_set():
+                if stop_event is None or stop_event.is_set():
                     return
 
-                Item: Optional[Tuple[str, str, Optional[Dict[str, Any]]]] = None
+                item: Optional[Tuple[str, str, Optional[Dict[str, Any]]]] = None
                 try:
-                    Item = await asyncio.wait_for(
-                        self.CleanerInstance.Queue.get(),
-                        timeout=QueueGetTimeout,
+                    item = await asyncio.wait_for(
+                        self.mgr.queue.get(),
+                        timeout=QUEUE_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     continue
@@ -694,23 +694,23 @@ class WorkerPool:
                     raise
 
                 try:
-                    await self.CleanerInstance.Request(Item[0], Item[1], Item[2])
+                    await self.mgr.request(item[0], item[1], item[2])
                 except asyncio.CancelledError:
-                    async with StatsLock:
-                        Stats["Abandoned"] += 1
+                    async with stats_lock:
+                        stats["abandoned"] += 1
                     try:
-                        self.CleanerInstance.Queue.task_done()
+                        self.mgr.queue.task_done()
                     except Exception:
                         pass
                     raise
                 except Exception:
                     try:
-                        self.CleanerInstance.Queue.task_done()
+                        self.mgr.queue.task_done()
                     except Exception:
                         pass
                 else:
                     try:
-                        self.CleanerInstance.Queue.task_done()
+                        self.mgr.queue.task_done()
                     except Exception:
                         pass
         except asyncio.CancelledError:
@@ -718,483 +718,484 @@ class WorkerPool:
         except Exception:
             return
 
-    async def Start(self) -> None:
-        for _ in range(self.CurrentWorkers):
-            Stagger = SafeRandomUniform(0.0, WorkerStaggerMax)
-            self.Tasks.append(asyncio.create_task(self.Worker(Stagger=Stagger)))
+    async def start(self) -> None:
+        for _ in range(self.count):
+            s = jitter(0.0, STAGGER_MAX)
+            self.tasks.append(asyncio.create_task(self.work(stagger=s)))
 
-    async def Autotune(self) -> None:
-        LastDone = 0
-        LastRateLimit = 0
+    async def autotune(self) -> None:
+        last_done = 0
+        last_rl = 0
         while True:
-            if StopEvent is None or StopEvent.is_set():
+            if stop_event is None or stop_event.is_set():
                 return
             try:
-                await SafeSleep(AutotuneInterval)
+                await safe_sleep(AUTOTUNE_INTERVAL)
             except asyncio.CancelledError:
                 return
 
-            Now = time.time()
-            async with StatsLock:
-                DoneDelta = Stats["Done"] - LastDone
-                RateLimitDelta = Stats["RateLimits"] - LastRateLimit
-                LastDone = Stats["Done"]
-                LastRateLimit = Stats["RateLimits"]
+            now = time.time()
+            async with stats_lock:
+                done_delta = stats["done"] - last_done
+                rl_delta = stats["rate_limits"] - last_rl
+                last_done = stats["done"]
+                last_rl = stats["rate_limits"]
 
-            LogMessage: Optional[str] = None
-            async with self.PoolLock:
-                self.Tasks = deque(Task for Task in self.Tasks if not Task.done())
+            log_msg: Optional[str] = None
 
-                RateLimitPressure = RateLimitDelta > DoneDelta * AutotuneRateLimitThreshold
-                if RateLimitPressure and self.CurrentWorkers > MinWorkers:
-                    NewCount = max(MinWorkers, int(self.CurrentWorkers * AutotuneDownFactor))
-                    if NewCount < self.CurrentWorkers:
-                        Excess = len(self.Tasks) - NewCount
-                        for _ in range(max(0, Excess)):
+            async with self.lock:
+                self.tasks = deque(t for t in self.tasks if not t.done())
+
+                rl_pressure = rl_delta > done_delta * TUNE_RL_THRESHOLD
+                if rl_pressure and self.count > MIN_WORKERS:
+                    new_count = max(MIN_WORKERS, int(self.count * TUNE_DOWN_FACTOR))
+                    if new_count < self.count:
+                        excess = len(self.tasks) - new_count
+                        for _ in range(max(0, excess)):
                             try:
-                                Task = self.Tasks.pop()
-                                Task.cancel()
+                                t = self.tasks.pop()
+                                t.cancel()
                             except Exception:
                                 pass
-                        OldCount = self.CurrentWorkers
-                        self.CurrentWorkers = NewCount
-                        if Now - self.LastAutotuneLog >= AutotuneLogCooldown:
-                            self.LastAutotuneLog = Now
-                            LogMessage = f"Autotune down — {OldCount} → {NewCount} workers"
+                        old = self.count
+                        self.count = new_count
+                        if now - self.last_log >= AUTOTUNE_LOG_COOLDOWN:
+                            self.last_log = now
+                            log_msg = f"Autotune down — {old} → {new_count} workers"
 
                 elif (
-                    RateLimitDelta == 0
-                    and DoneDelta > AutotuneSuccessThreshold
-                    and self.CurrentWorkers < MaxWorkers
+                    rl_delta == 0
+                    and done_delta > TUNE_SUCCESS_THRESHOLD
+                    and self.count < MAX_WORKERS
                 ):
-                    NewCount = min(MaxWorkers, self.CurrentWorkers + AutotuneUpStep)
-                    ToSpawn = NewCount - len(self.Tasks)
-                    for _ in range(max(0, ToSpawn)):
-                        self.Tasks.append(
+                    new_count = min(MAX_WORKERS, self.count + TUNE_UP_STEP)
+                    to_spawn = new_count - len(self.tasks)
+                    for _ in range(max(0, to_spawn)):
+                        self.tasks.append(
                             asyncio.create_task(
-                                self.Worker(
-                                    Stagger=SafeRandomUniform(0.0, WorkerStaggerMax)
+                                self.work(
+                                    stagger=jitter(0.0, STAGGER_MAX)
                                 )
                             )
                         )
-                    OldCount = self.CurrentWorkers
-                    self.CurrentWorkers = NewCount
-                    if Now - self.LastAutotuneLog >= AutotuneLogCooldown:
-                        self.LastAutotuneLog = Now
-                        LogMessage = f"Autotune up — {OldCount} → {NewCount} workers"
+                    old = self.count
+                    self.count = new_count
+                    if now - self.last_log >= AUTOTUNE_LOG_COOLDOWN:
+                        self.last_log = now
+                        log_msg = f"Autotune up — {old} → {new_count} workers"
 
-            if LogMessage:
-                InfoBox(LogMessage)
+            if log_msg:
+                info_box(log_msg)
 
-    async def Stop(self) -> None:
-        async with self.PoolLock:
-            TasksSnapshot = list(self.Tasks)
-            self.Tasks.clear()
-        for Task in TasksSnapshot:
+    async def stop(self) -> None:
+        async with self.lock:
+            snapshot = list(self.tasks)
+            self.tasks.clear()
+        for t in snapshot:
             try:
-                Task.cancel()
+                t.cancel()
             except Exception:
                 pass
-        if TasksSnapshot:
-            await asyncio.gather(*TasksSnapshot, return_exceptions=True)
-        Queue = self.CleanerInstance.Queue
-        if Queue is not None:
+        if snapshot:
+            await asyncio.gather(*snapshot, return_exceptions=True)
+        q = self.mgr.queue
+        if q is not None:
             while True:
                 try:
-                    Queue.get_nowait()
+                    q.get_nowait()
                 except asyncio.QueueEmpty:
                     break
                 else:
-                    async with StatsLock:
-                        Stats["Abandoned"] += 1
+                    async with stats_lock:
+                        stats["abandoned"] += 1
                     try:
-                        Queue.task_done()
+                        q.task_done()
                     except Exception:
                         pass
 
 
-async def ProgressReporter(Total: int) -> None:
-    LastSettled = 0
-    LastTime = time.time()
+async def report_progress(total: int) -> None:
+    last_settled = 0
+    last_time = time.time()
     while True:
-        if StopEvent is None or StopEvent.is_set():
+        if stop_event is None or stop_event.is_set():
             return
         try:
-            await SafeSleep(ProgressInterval)
+            await safe_sleep(PROGRESS_INTERVAL)
         except asyncio.CancelledError:
             return
 
-        Now = time.time()
-        async with StatsLock:
-            Done = Stats["Done"]
-            Already = Stats["Already"]
-            Failed = Stats["Failed"]
-            Retries = Stats["Retries"]
-            RateLimits = Stats["RateLimits"]
-            Abandoned = Stats["Abandoned"]
+        now = time.time()
+        async with stats_lock:
+            done = stats["done"]
+            already = stats["already"]
+            failed = stats["failed"]
+            retries = stats["retries"]
+            rate_limits = stats["rate_limits"]
+            abandoned = stats["abandoned"]
 
-        Settled = Done + Already + Failed + Abandoned
-        Delta = max(0, Settled - LastSettled)
-        DeltaTime = max(0.0, Now - LastTime)
-        Rate = SafeDiv(Delta, DeltaTime, 0)
-        LastSettled = Settled
-        LastTime = Now
+        settled = done + already + failed + abandoned
+        delta = max(0, settled - last_settled)
+        dt = max(0.0, now - last_time)
+        rate = safe_div(delta, dt, 0)
+        last_settled = settled
+        last_time = now
 
-        Bar = FormatProgressBar(Settled, Total)
-        Percent = max(0.0, min(100.0, SafeDiv(Settled, Total, 0) * 100))
-        Remaining = max(0, Total - Settled)
-        Eta = SafeDiv(Remaining, Rate, 0)
+        bar = progress_bar(settled, total)
+        pct = max(0.0, min(100.0, safe_div(settled, total, 0) * 100))
+        remaining = max(0, total - settled)
+        eta = safe_div(remaining, rate, 0)
 
-        Line = (
-            f"{Bar} {Bold}{Teal}{Percent:5.1f}%{Reset} "
-            f"{Purple}│{Reset} {BrightGreen}OK {Done}{Reset} "
-            f"{Purple}│{Reset} {Gray}SKIP {Already}{Reset} "
-            f"{Purple}│{Reset} {BrightRed}FAIL {Failed}{Reset} "
-            f"{Purple}│{Reset} {BrightYellow}RL {RateLimits}{Reset} "
-            f"{Purple}│{Reset} {Lime}RETRY {Retries}{Reset} "
-            f"{Purple}│{Reset} {Orange}ABANDON {Abandoned}{Reset} "
-            f"{Purple}│{Reset} {Pink}{Rate:5.1f}/s{Reset} "
-            f"{Purple}│{Reset} {BrightBlue}ETA {Eta:5.0f}s{Reset}"
+        line = (
+            f"{bar} {BOLD}{TEAL}{pct:5.1f}%{RESET} "
+            f"{PURPLE}│{RESET} {GREEN}OK {done}{RESET} "
+            f"{PURPLE}│{RESET} {GRAY}SKIP {already}{RESET} "
+            f"{PURPLE}│{RESET} {RED}FAIL {failed}{RESET} "
+            f"{PURPLE}│{RESET} {YELLOW}RL {rate_limits}{RESET} "
+            f"{PURPLE}│{RESET} {LIME}RETRY {retries}{RESET} "
+            f"{PURPLE}│{RESET} {ORANGE}ABANDON {abandoned}{RESET} "
+            f"{PURPLE}│{RESET} {PINK}{rate:5.1f}/s{RESET} "
+            f"{PURPLE}│{RESET} {BLUE}ETA {eta:5.0f}s{RESET}"
         )
         try:
-            print(f"\r{Line}", end="", flush=True)
+            print(f"\r{line}", end="", flush=True)
         except UnicodeEncodeError:
             pass
 
 
-async def DeleteChannels(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageChannels):
-        ErrorBox("Missing Manage Channels permission")
+async def channel_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_CHANNELS):
+        error_box("Missing Manage Channels permission")
         return []
-    Channels = await CleanerInstance.GetChannels()
-    if not Channels:
-        ErrorBox("No channels found")
+    channels = await mgr.get_channels()
+    if not channels:
+        error_box("No channels found")
         return []
 
-    Categories: List[Any] = []
-    Others: List[Any] = []
-    for Channel in Channels:
-        (Categories if SafeGet(Channel, "type") == 4 else Others).append(Channel)
+    cats: List[Any] = []
+    rest: List[Any] = []
+    for ch in channels:
+        (cats if dig(ch, "type") == 4 else rest).append(ch)
 
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    for Channel in itertools.chain(Others, Categories):
-        ChannelId = SafeGet(Channel, "id")
-        if not ChannelId:
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    for ch in itertools.chain(rest, cats):
+        cid = dig(ch, "id")
+        if not cid:
             continue
-        Ops.append(("DELETE", f"{ApiBase}/channels/{ChannelId}", None))
-    return Ops
+        ops.append(("DELETE", f"{API_BASE}/channels/{cid}", None))
+    return ops
 
 
-async def DeleteRoles(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageRoles):
-        ErrorBox("Missing Manage Roles permission")
+async def role_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_ROLES):
+        error_box("Missing Manage Roles permission")
         return []
-    Roles = await CleanerInstance.GetRoles()
-    if not Roles:
-        ErrorBox("No roles found")
-        return []
-
-    EligibleRoles: List[str] = []
-    for Role in Roles:
-        RoleId = SafeGet(Role, "id")
-        if not RoleId or RoleId == CleanerInstance.GuildId:
-            continue
-        if SafeGet(Role, "managed", False):
-            continue
-        EligibleRoles.append(RoleId)
-
-    if not EligibleRoles:
-        ErrorBox("No deletable roles found")
+    all_roles = await mgr.get_roles()
+    if not all_roles:
+        error_box("No roles found")
         return []
 
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    Skipped = 0
-    for RoleId in EligibleRoles:
-        Ok, _ = CleanerInstance.CanManageRole(RoleId)
-        if not Ok:
-            Skipped += 1
+    eligible: List[str] = []
+    for role in all_roles:
+        rid = dig(role, "id")
+        if not rid or rid == mgr.guild_id:
             continue
-        Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/roles/{RoleId}", None)
+        if dig(role, "managed", False):
+            continue
+        eligible.append(rid)
+
+    if not eligible:
+        error_box("No deletable roles found")
+        return []
+
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    skipped = 0
+    for rid in eligible:
+        ok, _ = mgr.can_manage_role(rid)
+        if not ok:
+            skipped += 1
+            continue
+        ops.append(
+            ("DELETE", f"{API_BASE}/guilds/{mgr.guild_id}/roles/{rid}", None)
         )
 
-    if Skipped:
-        WarningBox(f"Skipped {Skipped} role(s) — hierarchy restriction")
-    if not Ops:
-        ErrorBox("No eligible roles found")
-    return Ops
+    if skipped:
+        warn_box(f"Skipped {skipped} role(s) — hierarchy restriction")
+    if not ops:
+        error_box("No eligible roles found")
+    return ops
 
 
-async def DeleteEmojis(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageGuildExpressions):
-        ErrorBox("Missing Manage Expressions permission")
+async def emoji_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_EXPRESSIONS):
+        error_box("Missing Manage Expressions permission")
         return []
-    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/emojis")
-    if not Response or Response.status_code != 200:
+    resp = await mgr.request("GET", f"{API_BASE}/guilds/{mgr.guild_id}/emojis")
+    if not resp or resp.status_code != 200:
         return []
-    Emojis = SafeJson(Response)
-    if not isinstance(Emojis, list) or not Emojis:
-        ErrorBox("No emojis found")
+    emojis = parse_json(resp)
+    if not isinstance(emojis, list) or not emojis:
+        error_box("No emojis found")
         return []
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    for Emoji in Emojis:
-        EmojiId = SafeGet(Emoji, "id")
-        if not EmojiId:
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    for emoji in emojis:
+        eid = dig(emoji, "id")
+        if not eid:
             continue
-        Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/emojis/{EmojiId}", None)
+        ops.append(
+            ("DELETE", f"{API_BASE}/guilds/{mgr.guild_id}/emojis/{eid}", None)
         )
-    return Ops
+    return ops
 
 
-async def DeleteStickers(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageGuildExpressions):
-        ErrorBox("Missing Manage Expressions permission")
+async def sticker_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_EXPRESSIONS):
+        error_box("Missing Manage Expressions permission")
         return []
-    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/stickers")
-    if not Response or Response.status_code != 200:
+    resp = await mgr.request("GET", f"{API_BASE}/guilds/{mgr.guild_id}/stickers")
+    if not resp or resp.status_code != 200:
         return []
-    Stickers = SafeJson(Response)
-    if not isinstance(Stickers, list) or not Stickers:
-        ErrorBox("No stickers found")
+    stickers = parse_json(resp)
+    if not isinstance(stickers, list) or not stickers:
+        error_box("No stickers found")
         return []
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    for Sticker in Stickers:
-        StickerId = SafeGet(Sticker, "id")
-        if not StickerId:
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    for sticker in stickers:
+        sid = dig(sticker, "id")
+        if not sid:
             continue
-        Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/stickers/{StickerId}", None)
+        ops.append(
+            ("DELETE", f"{API_BASE}/guilds/{mgr.guild_id}/stickers/{sid}", None)
         )
-    return Ops
+    return ops
 
 
-async def DeleteInvites(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageGuild):
-        ErrorBox("Missing Manage Guild permission")
+async def invite_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_GUILD):
+        error_box("Missing Manage Guild permission")
         return []
-    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/invites")
-    if not Response or Response.status_code != 200:
+    resp = await mgr.request("GET", f"{API_BASE}/guilds/{mgr.guild_id}/invites")
+    if not resp or resp.status_code != 200:
         return []
-    Invites = SafeJson(Response)
-    if not isinstance(Invites, list) or not Invites:
-        ErrorBox("No invites found")
+    invites = parse_json(resp)
+    if not isinstance(invites, list) or not invites:
+        error_box("No invites found")
         return []
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    for Invite in Invites:
-        Code = SafeGet(Invite, "code")
-        if not Code:
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    for invite in invites:
+        code = dig(invite, "code")
+        if not code:
             continue
-        Ops.append(("DELETE", f"{ApiBase}/invites/{Code}", None))
-    return Ops
+        ops.append(("DELETE", f"{API_BASE}/invites/{code}", None))
+    return ops
 
 
-async def DeleteWebhooks(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not CleanerInstance.HasPerm(PermManageWebhooks):
-        ErrorBox("Missing Manage Webhooks permission")
+async def webhook_ops(mgr: ServerNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not mgr.has_perm(PERM_WEBHOOKS):
+        error_box("Missing Manage Webhooks permission")
         return []
-    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/webhooks")
-    if not Response or Response.status_code != 200:
+    resp = await mgr.request("GET", f"{API_BASE}/guilds/{mgr.guild_id}/webhooks")
+    if not resp or resp.status_code != 200:
         return []
-    Webhooks = SafeJson(Response)
-    if not isinstance(Webhooks, list) or not Webhooks:
-        ErrorBox("No webhooks found")
+    webhooks = parse_json(resp)
+    if not isinstance(webhooks, list) or not webhooks:
+        error_box("No webhooks found")
         return []
-    Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-    for Webhook in Webhooks:
-        WebhookId = SafeGet(Webhook, "id")
-        if not WebhookId:
+    ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+    for wh in webhooks:
+        wid = dig(wh, "id")
+        if not wid:
             continue
-        Ops.append(("DELETE", f"{ApiBase}/webhooks/{WebhookId}", None))
-    return Ops
+        ops.append(("DELETE", f"{API_BASE}/webhooks/{wid}", None))
+    return ops
 
 
-Actions: Dict[str, Tuple[str, Optional[Callable]]] = {
-    "1": ("Delete Channels & Categories", DeleteChannels),
-    "2": ("Delete Roles", DeleteRoles),
-    "3": ("Delete Emojis", DeleteEmojis),
-    "4": ("Delete Stickers", DeleteStickers),
-    "5": ("Delete Invites", DeleteInvites),
-    "6": ("Delete Webhooks", DeleteWebhooks),
+ACTIONS: Dict[str, Tuple[str, Optional[Callable]]] = {
+    "1": ("Delete Channels & Categories", channel_ops),
+    "2": ("Delete Roles", role_ops),
+    "3": ("Delete Emojis", emoji_ops),
+    "4": ("Delete Stickers", sticker_ops),
+    "5": ("Delete Invites", invite_ops),
+    "6": ("Delete Webhooks", webhook_ops),
     "7": ("Run Everything", None),
 }
 
 
-async def RunAction(CleanerInstance: GuildNuker, Choice: str) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if Choice == "7":
-        Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
-        for Key in ("1", "2", "3", "4", "5", "6"):
-            _, Function = Actions[Key]
-            Ops.extend(await Function(CleanerInstance))
-        return Ops
-    _, Function = Actions[Choice]
-    return await Function(CleanerInstance)
+async def run_action(mgr: ServerNuker, choice: str) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if choice == "7":
+        ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
+        for key in ("1", "2", "3", "4", "5", "6"):
+            _, fn = ACTIONS[key]
+            ops.extend(await fn(mgr))
+        return ops
+    _, fn = ACTIONS[choice]
+    return await fn(mgr)
 
 
-def PrintActionMenu() -> None:
-    SafePrint("")
-    SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Guild Cleaner{Reset} "
-        f"{Purple}──────────────────────────────────────────────┐{Reset}"
+def print_menu() -> None:
+    safe_print("")
+    safe_print(
+        f"{PURPLE}┌─ {MAGENTA}{BOLD}Guild Cleaner{RESET} "
+        f"{PURPLE}──────────────────────────────────────────────┐{RESET}"
     )
-    SafePrint(f"{Purple}│{Reset} {Teal}Available actions{Reset}")
-    SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
-    for Key in sorted(Actions.keys(), key=int):
-        Name, _ = Actions[Key]
-        if Key == "7":
-            SafePrint(f"{Purple}│{Reset} {BrightRed}{Bold}[{Key}] {Name}{Reset}")
+    safe_print(f"{PURPLE}│{RESET} {TEAL}Available actions{RESET}")
+    safe_print(f"{PURPLE}├──────────────────────────────────────────────────────────┤{RESET}")
+    for key in sorted(ACTIONS.keys(), key=int):
+        name, _ = ACTIONS[key]
+        if key == "7":
+            safe_print(f"{PURPLE}│{RESET} {RED}{BOLD}[{key}] {name}{RESET}")
         else:
-            SafePrint(f"{Purple}│{Reset} {Lime}[{Key}]{Reset} {White}{Name}{Reset}")
-    SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
-    SafePrint("")
+            safe_print(f"{PURPLE}│{RESET} {LIME}[{key}]{RESET} {WHITE}{name}{RESET}")
+    safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
+    safe_print("")
 
 
-def ConfirmDestructive(Choice: str, Total: int) -> bool:
-    if Total <= 0:
+def confirm(choice: str, total: int) -> bool:
+    if total <= 0:
         return False
-    if Choice == "7":
-        Message = (
-            f"Confirm Run Everything ({Total} operations)?\n"
+    if choice == "7":
+        msg = (
+            f"Confirm Run Everything ({total} operations)?\n"
             f"Type y to proceed, N to cancel."
         )
-        Box("Confirm", Message, BrightRed)
+        draw_box("Confirm", msg, RED)
     else:
-        Message = (
-            f"Confirm {Total} operations?\n"
+        msg = (
+            f"Confirm {total} operations?\n"
             f"Type y to proceed, N to cancel."
         )
-        Box("Confirm", Message, BrightYellow)
-    Answer = SafeInput(
-        f"{Purple}│{Reset} {Teal}Confirm{Reset}  {Purple}➜{Reset} "
+        draw_box("Confirm", msg, YELLOW)
+    answer = prompt(
+        f"{PURPLE}│{RESET} {TEAL}Confirm{RESET}  {PURPLE}➜{RESET} "
     ).lower()
-    return Answer in ("y", "yes")
+    return answer in ("y", "yes")
 
 
-async def Main() -> None:
-    global StatsLock, StopEvent
+async def main() -> None:
+    global stats_lock, stop_event
 
-    if not CheckHttp2Available():
+    if not require_http2():
         return
 
-    StatsLock = asyncio.Lock()
-    StopEvent = asyncio.Event()
-    Stats.update(
+    stats_lock = asyncio.Lock()
+    stop_event = asyncio.Event()
+    stats.update(
         {
-            "Done": 0,
-            "Already": 0,
-            "Failed": 0,
-            "Retries": 0,
-            "RateLimits": 0,
-            "Abandoned": 0,
-            "StartTime": 0.0,
+            "done": 0,
+            "already": 0,
+            "failed": 0,
+            "retries": 0,
+            "rate_limits": 0,
+            "abandoned": 0,
+            "start_time": 0.0,
         }
     )
 
-    SafeClear()
-    SafePrint("")
-    SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Configuration{Reset} "
-        f"{Purple}────────────────────────────────────────────┐{Reset}"
+    clear_screen()
+    safe_print("")
+    safe_print(
+        f"{PURPLE}┌─ {MAGENTA}{BOLD}Configuration{RESET} "
+        f"{PURPLE}────────────────────────────────────────────┐{RESET}"
     )
-    Token = SafeGetpass(f"{Purple}│{Reset} {Teal}Token{Reset}  {Purple}➜{Reset} ")
-    GuildId = SafeInput(f"{Purple}│{Reset} {Teal}Guild{Reset}  {Purple}➜{Reset} ")
-    SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+    token = secret_prompt(f"{PURPLE}│{RESET} {TEAL}Token{RESET}  {PURPLE}➜{RESET} ")
+    guild_id = prompt(f"{PURPLE}│{RESET} {TEAL}Guild{RESET}  {PURPLE}➜{RESET} ")
+    safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
 
-    async with GuildNuker(Token, GuildId) as CleanerInstance:
-        if not await CleanerInstance.ValidateAll():
+    async with ServerNuker(token, guild_id) as mgr:
+        if not await mgr.setup():
             return
 
-        PrintActionMenu()
-        SafePrint(
-            f"{Purple}┌─ {BrightMagenta}{Bold}Select{Reset} "
-            f"{Purple}──────────────────────────────────────────────────┐{Reset}"
+        print_menu()
+        safe_print(
+            f"{PURPLE}┌─ {MAGENTA}{BOLD}Select{RESET} "
+            f"{PURPLE}──────────────────────────────────────────────────┐{RESET}"
         )
-        Choice = SafeInput(f"{Purple}│{Reset} {Teal}Option{Reset}  {Purple}➜{Reset} ")
-        SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
-        if Choice not in Actions:
-            ErrorBox("Invalid option")
+        choice = prompt(f"{PURPLE}│{RESET} {TEAL}Option{RESET}  {PURPLE}➜{RESET} ")
+        safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
+        if choice not in ACTIONS:
+            error_box("Invalid option")
             return
 
-        Stats["StartTime"] = time.time()
-        Ops = await RunAction(CleanerInstance, Choice)
-        Total = len(Ops)
-        if Total == 0:
+        stats["start_time"] = time.time()
+        ops = await run_action(mgr, choice)
+        total = len(ops)
+        if total == 0:
             return
 
-        if not ConfirmDestructive(Choice, Total):
-            WarningBox("Operation cancelled")
+        if not confirm(choice, total):
+            warn_box("Operation cancelled")
             return
 
-        for Method, Url, Payload in Ops:
-            CleanerInstance.Queue.put_nowait((Method, Url, Payload))
+        for method, url, body in ops:
+            mgr.queue.put_nowait((method, url, body))
 
-        SafePrint("")
-        SafePrint(
-            f"{Purple}┌─ {BrightMagenta}{Bold}Queue{Reset} "
-            f"{Purple}─────────────────────────────────────────────────┐{Reset}"
+        safe_print("")
+        safe_print(
+            f"{PURPLE}┌─ {MAGENTA}{BOLD}Queue{RESET} "
+            f"{PURPLE}─────────────────────────────────────────────────┐{RESET}"
         )
-        SafePrint(f"{Purple}│{Reset} Total operations queued: {Lime}{Bold}{Total}{Reset}")
-        SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        safe_print(f"{PURPLE}│{RESET} Total operations queued: {LIME}{BOLD}{total}{RESET}")
+        safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
 
-        Pool = WorkerPool(CleanerInstance)
-        await Pool.Start()
-        ReporterTask = asyncio.create_task(ProgressReporter(Total))
-        AutotuneTask = asyncio.create_task(Pool.Autotune())
+        pool = TaskPool(mgr)
+        await pool.start()
+        reporter = asyncio.create_task(report_progress(total))
+        tuner = asyncio.create_task(pool.autotune())
 
         try:
-            await CleanerInstance.Queue.join()
+            await mgr.queue.join()
         finally:
-            StopEvent.set()
-            AutotuneTask.cancel()
-            ReporterTask.cancel()
-            await Pool.Stop()
-            await asyncio.gather(AutotuneTask, ReporterTask, return_exceptions=True)
-            SafePrint("")
+            stop_event.set()
+            tuner.cancel()
+            reporter.cancel()
+            await pool.stop()
+            await asyncio.gather(tuner, reporter, return_exceptions=True)
+            safe_print("")
 
-        SafePrint("")
-        Elapsed = time.time() - Stats["StartTime"]
-        Done = Stats["Done"]
-        Already = Stats["Already"]
-        Failed = Stats["Failed"]
-        Retries = Stats["Retries"]
-        RateLimits = Stats["RateLimits"]
-        Abandoned = Stats["Abandoned"]
+        safe_print("")
+        elapsed = time.time() - stats["start_time"]
+        done = stats["done"]
+        already = stats["already"]
+        failed = stats["failed"]
+        retries = stats["retries"]
+        rate_limits = stats["rate_limits"]
+        abandoned = stats["abandoned"]
 
-        SafePrint(
-            f"{Purple}┌─ {BrightMagenta}{Bold}Final Results{Reset} "
-            f"{Purple}────────────────────────────────────────┐{Reset}"
+        safe_print(
+            f"{PURPLE}┌─ {MAGENTA}{BOLD}Final Results{RESET} "
+            f"{PURPLE}────────────────────────────────────────┐{RESET}"
         )
-        SafePrint(f"{Purple}│{Reset} {BrightGreen}✔  Success   {Reset}: {Bold}{Done}/{Total}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {Gray}↷  Skipped   {Reset}: {Bold}{Already}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {BrightRed}✘  Failed    {Reset}: {Bold}{Failed}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {Orange}⊘  Abandoned {Reset}: {Bold}{Abandoned}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {BrightYellow}↻  Retries   {Reset}: {Bold}{Retries}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {Lime}⏱  Rate Lmt  {Reset}: {Bold}{RateLimits}{Reset}")
-        SafePrint(f"{Purple}│{Reset} {Lime}⏲  Time      {Reset}: {Bold}{Elapsed:.2f}s{Reset}")
-        SafePrint(
-            f"{Purple}│{Reset} {Pink}⚡  Avg Rate  {Reset}: "
-            f"{Bold}{SafeDiv(Done, max(Elapsed, 0.01), 0):.1f}/s{Reset}"
+        safe_print(f"{PURPLE}│{RESET} {GREEN}✔  Success   {RESET}: {BOLD}{done}/{total}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {GRAY}↷  Skipped   {RESET}: {BOLD}{already}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {RED}✘  Failed    {RESET}: {BOLD}{failed}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {ORANGE}⊘  Abandoned {RESET}: {BOLD}{abandoned}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {YELLOW}↻  Retries   {RESET}: {BOLD}{retries}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {LIME}⏱  Rate Lmt  {RESET}: {BOLD}{rate_limits}{RESET}")
+        safe_print(f"{PURPLE}│{RESET} {LIME}⏲  Time      {RESET}: {BOLD}{elapsed:.2f}s{RESET}")
+        safe_print(
+            f"{PURPLE}│{RESET} {PINK}⚡  Avg Rate  {RESET}: "
+            f"{BOLD}{safe_div(done, max(elapsed, 0.01), 0):.1f}/s{RESET}"
         )
-        SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
+        safe_print(f"{PURPLE}└──────────────────────────────────────────────────────────┘{RESET}")
 
 
-def SignalHandler(Sig: int, Frame: Any) -> None:
-    WarningBox("Interrupted — shutting down...")
-    if StopEvent is not None:
-        StopEvent.set()
+def on_signal(sig: int, frame: Any) -> None:
+    warn_box("Interrupted — shutting down...")
+    if stop_event is not None:
+        stop_event.set()
     os._exit(1)
 
 
-def RunMain() -> int:
+def run() -> int:
     try:
         asyncio.get_running_loop()
-        ErrorBox("Cannot run inside an existing event loop")
+        error_box("Cannot run inside an existing event loop")
         return 1
     except RuntimeError:
         pass
 
     try:
-        asyncio.run(Main())
+        asyncio.run(main())
         return 0
     except KeyboardInterrupt:
         return 130
@@ -1204,11 +1205,11 @@ def RunMain() -> int:
 
 if __name__ == "__main__":
     try:
-        signal.signal(signal.SIGINT, SignalHandler)
+        signal.signal(signal.SIGINT, on_signal)
     except Exception:
         pass
     try:
-        sys.exit(RunMain())
+        sys.exit(run())
     except SystemExit:
         raise
     except Exception:
