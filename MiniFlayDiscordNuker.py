@@ -55,6 +55,7 @@ AutotuneLogCooldown = 8.0
 GlobalRateLimitCap = 90.0
 QueueGetTimeout = 1.0
 WorkerStaggerMax = 0.04
+InterruptibleSleepSlice = 0.25
 
 AutotuneUpStep = 3
 AutotuneDownFactor = 0.75
@@ -74,6 +75,7 @@ Stats: Dict[str, Any] = {
     "Failed": 0,
     "Retries": 0,
     "RateLimits": 0,
+    "Abandoned": 0,
     "StartTime": 0.0,
 }
 
@@ -145,6 +147,20 @@ def FormatProgressBar(Done: int, Total: int, Width: int = 30) -> str:
 
 async def SafeSleep(Seconds: float) -> None:
     await asyncio.sleep(max(0.0, min(120.0, Seconds)))
+
+
+async def InterruptibleSleep(Seconds: float) -> bool:
+    Remaining = max(0.0, min(120.0, Seconds))
+    while Remaining > 0.0:
+        if StopEvent is not None and StopEvent.is_set():
+            return False
+        Slice = min(InterruptibleSleepSlice, Remaining)
+        try:
+            await asyncio.sleep(Slice)
+        except asyncio.CancelledError:
+            raise
+        Remaining -= Slice
+    return True
 
 
 def SafeRandomUniform(Low: float, High: float) -> float:
@@ -226,7 +242,7 @@ def CheckHttp2Available() -> bool:
     return True
 
 
-class Nuker:
+class GuildNuker:
     def __init__(self, Token: str, GuildId: str) -> None:
         self.Token = Token
         self.GuildId = GuildId
@@ -272,7 +288,7 @@ class Nuker:
         self.RoleCache: Dict[str, Dict[str, Any]] = {}
         self.AllRolesRaw: List[Any] = []
 
-    async def __aenter__(self) -> "Nuker":
+    async def __aenter__(self) -> "GuildNuker":
         self.Queue = asyncio.Queue()
         Limits = httpx.Limits(
             max_connections=MaxConnections,
@@ -514,10 +530,14 @@ class Nuker:
 
                 try:
                     Response = await self.Client.request(Method, Url, json=JsonPayload)
+                except asyncio.CancelledError:
+                    raise
                 except (httpx.RequestError, asyncio.TimeoutError):
                     async with StatsLock:
                         Stats["Retries"] += 1
-                    await SafeSleep(ComputeBackoff(Attempt))
+                    Completed = await InterruptibleSleep(ComputeBackoff(Attempt))
+                    if not Completed:
+                        return None
                     continue
                 except Exception:
                     return None
@@ -553,7 +573,9 @@ class Nuker:
                     SleepDuration = RetryAfter + SafeRandomUniform(JitterMin, JitterMax)
                     if IsGlobal:
                         WarningBox(f"Global rate limit — sleeping {SleepDuration:.2f}s")
-                    await asyncio.sleep(min(SleepDuration, GlobalRateLimitCap))
+                    Completed = await InterruptibleSleep(min(SleepDuration, GlobalRateLimitCap))
+                    if not Completed:
+                        return None
                     continue
 
                 if Status in (401, 403):
@@ -565,7 +587,9 @@ class Nuker:
                 if Status in (500, 502, 503, 504):
                     async with StatsLock:
                         Stats["Retries"] += 1
-                    await SafeSleep(ComputeBackoff(Attempt))
+                    Completed = await InterruptibleSleep(ComputeBackoff(Attempt))
+                    if not Completed:
+                        return None
                     continue
 
                 if Mutating:
@@ -577,6 +601,8 @@ class Nuker:
                 async with StatsLock:
                     Stats["Failed"] += 1
             return None
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return None
 
@@ -635,8 +661,8 @@ class Nuker:
 
 
 class WorkerPool:
-    def __init__(self, NukerInstance: Nuker) -> None:
-        self.NukerInstance = NukerInstance
+    def __init__(self, CleanerInstance: GuildNuker) -> None:
+        self.CleanerInstance = CleanerInstance
         self.CurrentWorkers = InitialWorkers
         self.Tasks: Deque[asyncio.Task[None]] = deque()
         self.PoolLock = asyncio.Lock()
@@ -646,31 +672,43 @@ class WorkerPool:
         try:
             if Stagger > 0:
                 try:
-                    await SafeSleep(Stagger)
+                    Completed = await InterruptibleSleep(Stagger)
+                    if not Completed:
+                        return
                 except asyncio.CancelledError:
-                    return
+                    raise
+
             while True:
                 if StopEvent is None or StopEvent.is_set():
                     return
+
+                Item: Optional[Tuple[str, str, Optional[Dict[str, Any]]]] = None
                 try:
-                    Method, Url, Payload = await asyncio.wait_for(
-                        self.NukerInstance.Queue.get(),
+                    Item = await asyncio.wait_for(
+                        self.CleanerInstance.Queue.get(),
                         timeout=QueueGetTimeout,
                     )
                 except asyncio.TimeoutError:
                     continue
                 except asyncio.CancelledError:
-                    return
+                    raise
+
+                OperationCompleted = False
                 try:
-                    await self.NukerInstance.Request(Method, Url, Payload)
+                    await self.CleanerInstance.Request(Item[0], Item[1], Item[2])
+                    OperationCompleted = True
                 except asyncio.CancelledError:
+                    async with StatsLock:
+                        Stats["Abandoned"] += 1
                     raise
                 except Exception:
-                    pass
+                    OperationCompleted = True
                 finally:
                     try:
-                        self.NukerInstance.Queue.task_done()
+                        self.CleanerInstance.Queue.task_done()
                     except Exception:
+                        pass
+                    if not OperationCompleted and StopEvent is not None and StopEvent.is_set():
                         pass
         except asyncio.CancelledError:
             raise
@@ -776,8 +814,9 @@ async def ProgressReporter(Total: int) -> None:
             Failed = Stats["Failed"]
             Retries = Stats["Retries"]
             RateLimits = Stats["RateLimits"]
+            Abandoned = Stats["Abandoned"]
 
-        Settled = Done + Already + Failed
+        Settled = Done + Already + Failed + Abandoned
         Delta = max(0, Settled - LastSettled)
         DeltaTime = max(0.0, Now - LastTime)
         Rate = SafeDiv(Delta, DeltaTime, 0)
@@ -796,6 +835,7 @@ async def ProgressReporter(Total: int) -> None:
             f"{Purple}│{Reset} {BrightRed}FAIL {Failed}{Reset} "
             f"{Purple}│{Reset} {BrightYellow}RL {RateLimits}{Reset} "
             f"{Purple}│{Reset} {Lime}RETRY {Retries}{Reset} "
+            f"{Purple}│{Reset} {Orange}ABANDON {Abandoned}{Reset} "
             f"{Purple}│{Reset} {Pink}{Rate:5.1f}/s{Reset} "
             f"{Purple}│{Reset} {BrightBlue}ETA {Eta:5.0f}s{Reset}"
         )
@@ -805,11 +845,11 @@ async def ProgressReporter(Total: int) -> None:
             pass
 
 
-async def DeleteChannels(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageChannels):
+async def DeleteChannels(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageChannels):
         ErrorBox("Missing Manage Channels permission")
         return []
-    Channels = await NukerInstance.GetChannels()
+    Channels = await CleanerInstance.GetChannels()
     if not Channels:
         ErrorBox("No channels found")
         return []
@@ -828,11 +868,11 @@ async def DeleteChannels(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[
     return Ops
 
 
-async def DeleteRoles(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageRoles):
+async def DeleteRoles(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageRoles):
         ErrorBox("Missing Manage Roles permission")
         return []
-    Roles = await NukerInstance.GetRoles()
+    Roles = await CleanerInstance.GetRoles()
     if not Roles:
         ErrorBox("No roles found")
         return []
@@ -840,7 +880,7 @@ async def DeleteRoles(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dic
     EligibleRoles: List[str] = []
     for Role in Roles:
         RoleId = SafeGet(Role, "id")
-        if not RoleId or RoleId == NukerInstance.GuildId:
+        if not RoleId or RoleId == CleanerInstance.GuildId:
             continue
         if SafeGet(Role, "managed", False):
             continue
@@ -853,12 +893,12 @@ async def DeleteRoles(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dic
     Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
     Skipped = 0
     for RoleId in EligibleRoles:
-        Ok, _ = NukerInstance.CanManageRole(RoleId)
+        Ok, _ = CleanerInstance.CanManageRole(RoleId)
         if not Ok:
             Skipped += 1
             continue
         Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/roles/{RoleId}", None)
+            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/roles/{RoleId}", None)
         )
 
     if Skipped:
@@ -868,11 +908,11 @@ async def DeleteRoles(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dic
     return Ops
 
 
-async def DeleteEmojis(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageGuildExpressions):
+async def DeleteEmojis(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageGuildExpressions):
         ErrorBox("Missing Manage Expressions permission")
         return []
-    Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/emojis")
+    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/emojis")
     if not Response or Response.status_code != 200:
         return []
     Emojis = SafeJson(Response)
@@ -885,16 +925,16 @@ async def DeleteEmojis(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Di
         if not EmojiId:
             continue
         Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/emojis/{EmojiId}", None)
+            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/emojis/{EmojiId}", None)
         )
     return Ops
 
 
-async def DeleteStickers(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageGuildExpressions):
+async def DeleteStickers(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageGuildExpressions):
         ErrorBox("Missing Manage Expressions permission")
         return []
-    Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/stickers")
+    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/stickers")
     if not Response or Response.status_code != 200:
         return []
     Stickers = SafeJson(Response)
@@ -907,16 +947,16 @@ async def DeleteStickers(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[
         if not StickerId:
             continue
         Ops.append(
-            ("DELETE", f"{ApiBase}/guilds/{NukerInstance.GuildId}/stickers/{StickerId}", None)
+            ("DELETE", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/stickers/{StickerId}", None)
         )
     return Ops
 
 
-async def DeleteInvites(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageGuild):
+async def DeleteInvites(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageGuild):
         ErrorBox("Missing Manage Guild permission")
         return []
-    Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/invites")
+    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/invites")
     if not Response or Response.status_code != 200:
         return []
     Invites = SafeJson(Response)
@@ -932,11 +972,11 @@ async def DeleteInvites(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[D
     return Ops
 
 
-async def DeleteWebhooks(NukerInstance: Nuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
-    if not NukerInstance.HasPerm(PermManageWebhooks):
+async def DeleteWebhooks(CleanerInstance: GuildNuker) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+    if not CleanerInstance.HasPerm(PermManageWebhooks):
         ErrorBox("Missing Manage Webhooks permission")
         return []
-    Response = await NukerInstance.Request("GET", f"{ApiBase}/guilds/{NukerInstance.GuildId}/webhooks")
+    Response = await CleanerInstance.Request("GET", f"{ApiBase}/guilds/{CleanerInstance.GuildId}/webhooks")
     if not Response or Response.status_code != 200:
         return []
     Webhooks = SafeJson(Response)
@@ -963,22 +1003,22 @@ Actions: Dict[str, Tuple[str, Optional[Callable]]] = {
 }
 
 
-async def RunAction(NukerInstance: Nuker, Choice: str) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
+async def RunAction(CleanerInstance: GuildNuker, Choice: str) -> List[Tuple[str, str, Optional[Dict[str, Any]]]]:
     if Choice == "7":
         Ops: List[Tuple[str, str, Optional[Dict[str, Any]]]] = []
         for Key in ("1", "2", "3", "4", "5", "6"):
             _, Function = Actions[Key]
-            Ops.extend(await Function(NukerInstance))
+            Ops.extend(await Function(CleanerInstance))
         return Ops
     _, Function = Actions[Choice]
-    return await Function(NukerInstance)
+    return await Function(CleanerInstance)
 
 
 def PrintActionMenu() -> None:
     SafePrint("")
     SafePrint(
-        f"{Purple}┌─ {BrightMagenta}{Bold}Mini Flay Discord Nuker{Reset} "
-        f"{Purple}──────────────────────────────────────┐{Reset}"
+        f"{Purple}┌─ {BrightMagenta}{Bold}Guild Cleaner{Reset} "
+        f"{Purple}──────────────────────────────────────────────┐{Reset}"
     )
     SafePrint(f"{Purple}│{Reset} {Teal}Available actions{Reset}")
     SafePrint(f"{Purple}├──────────────────────────────────────────────────────────┤{Reset}")
@@ -1028,6 +1068,7 @@ async def Main() -> None:
             "Failed": 0,
             "Retries": 0,
             "RateLimits": 0,
+            "Abandoned": 0,
             "StartTime": 0.0,
         }
     )
@@ -1042,8 +1083,8 @@ async def Main() -> None:
     GuildId = SafeInput(f"{Purple}│{Reset} {Teal}Guild{Reset}  {Purple}➜{Reset} ")
     SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
 
-    async with Nuker(Token, GuildId) as NukerInstance:
-        if not await NukerInstance.ValidateAll():
+    async with GuildNuker(Token, GuildId) as CleanerInstance:
+        if not await CleanerInstance.ValidateAll():
             return
 
         PrintActionMenu()
@@ -1058,7 +1099,7 @@ async def Main() -> None:
             return
 
         Stats["StartTime"] = time.time()
-        Ops = await RunAction(NukerInstance, Choice)
+        Ops = await RunAction(CleanerInstance, Choice)
         Total = len(Ops)
         if Total == 0:
             return
@@ -1068,7 +1109,7 @@ async def Main() -> None:
             return
 
         for Method, Url, Payload in Ops:
-            NukerInstance.Queue.put_nowait((Method, Url, Payload))
+            CleanerInstance.Queue.put_nowait((Method, Url, Payload))
 
         SafePrint("")
         SafePrint(
@@ -1078,13 +1119,13 @@ async def Main() -> None:
         SafePrint(f"{Purple}│{Reset} Total operations queued: {Lime}{Bold}{Total}{Reset}")
         SafePrint(f"{Purple}└──────────────────────────────────────────────────────────┘{Reset}")
 
-        Pool = WorkerPool(NukerInstance)
+        Pool = WorkerPool(CleanerInstance)
         await Pool.Start()
         ReporterTask = asyncio.create_task(ProgressReporter(Total))
         AutotuneTask = asyncio.create_task(Pool.Autotune())
 
         try:
-            await NukerInstance.Queue.join()
+            await CleanerInstance.Queue.join()
         finally:
             StopEvent.set()
             AutotuneTask.cancel()
@@ -1100,6 +1141,7 @@ async def Main() -> None:
         Failed = Stats["Failed"]
         Retries = Stats["Retries"]
         RateLimits = Stats["RateLimits"]
+        Abandoned = Stats["Abandoned"]
 
         SafePrint(
             f"{Purple}┌─ {BrightMagenta}{Bold}Final Results{Reset} "
@@ -1108,6 +1150,7 @@ async def Main() -> None:
         SafePrint(f"{Purple}│{Reset} {BrightGreen}✔  Success   {Reset}: {Bold}{Done}/{Total}{Reset}")
         SafePrint(f"{Purple}│{Reset} {Gray}↷  Skipped   {Reset}: {Bold}{Already}{Reset}")
         SafePrint(f"{Purple}│{Reset} {BrightRed}✘  Failed    {Reset}: {Bold}{Failed}{Reset}")
+        SafePrint(f"{Purple}│{Reset} {Orange}⊘  Abandoned {Reset}: {Bold}{Abandoned}{Reset}")
         SafePrint(f"{Purple}│{Reset} {BrightYellow}↻  Retries   {Reset}: {Bold}{Retries}{Reset}")
         SafePrint(f"{Purple}│{Reset} {Lime}⏱  Rate Lmt  {Reset}: {Bold}{RateLimits}{Reset}")
         SafePrint(f"{Purple}│{Reset} {Lime}⏲  Time      {Reset}: {Bold}{Elapsed:.2f}s{Reset}")
